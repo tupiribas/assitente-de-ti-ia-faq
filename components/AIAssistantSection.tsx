@@ -1,35 +1,33 @@
-// assistente-de-ti/components/AIAssistantSection.tsx
-
 import React, { useState, useRef, useEffect } from 'react';
-// IMPORTAÇÕES ESSENCIAIS QUE ESTAVAM FALTANDO
 import { ChatMessage as ChatMessageType, FAQ as FAQType } from '../types';
 import ChatMessageItem from './ChatMessageItem';
 import ChatInput from './ChatInput';
 import LoadingSpinner from './LoadingSpinner';
-import { geminiService } from '../services/geminiService';
-import { Chat } from '@google/genai';
+import { geminiService } from '../services/geminiService'; // Agora um cliente de proxy
+// Removida importação de Chat do @google/genai, pois não é mais usada diretamente aqui
 import { SparklesIcon, CheckCircleIcon, XCircleIcon, InformationCircleIcon } from './Icons';
 
-
-// ATUALIZADO: Interface SuggestedFAQProposal para incluir 'renameCategory' e seus campos
+// Interface para a sugestão de FAQ proposta pela IA
 interface SuggestedFAQProposal {
-  action: 'add' | 'update' | 'delete' | 'deleteCategory' | 'renameCategory'; // Adiciona 'renameCategory'
+  action: 'add' | 'update' | 'delete' | 'deleteCategory' | 'renameCategory';
   id?: string;
   question?: string;
   answer?: string;
   category?: string;
-  categoryName?: string;
-  oldCategoryName?: string; // NOVO: Para renomear categoria
-  newCategoryName?: string; // NOVO: Para renomear categoria
   reason?: string;
+  categoryName?: string;
+  oldCategoryName?: string;
+  newCategoryName?: string;
 }
 
-// ATUALIZADO: Props para onFaqAction (types já devem estar ok, mas garantindo)
+// Props esperadas pelo componente AIAssistantSection
 interface AIAssistantSectionProps {
-  onFaqAction: (action: 'add' | 'update' | 'delete' | 'deleteCategory' | 'renameCategory', faqData: Omit<FAQType, 'id'> & { id?: string; categoryName?: string; oldCategoryName?: string; newCategoryName?: string; reason?: string }) => Promise<FAQType | string | null>;
+  onFaqAction: (
+    action: SuggestedFAQProposal['action'],
+    proposal: SuggestedFAQProposal
+  ) => Promise<string | void>;
   faqs: FAQType[];
 }
-
 
 // Função para encontrar FAQs relevantes (para Retrieval Augmented Generation - RAG)
 const findRelevantFAQs = (query: string, faqsList: FAQType[], topN: number = 2): FAQType[] => {
@@ -54,7 +52,6 @@ const findRelevantFAQs = (query: string, faqsList: FAQType[], topN: number = 2):
   return scoredFAQs
     .filter(item => item.score > 0)
     .sort((a, b) => b.score - a.score)
-    .slice(0, topN)
     .map(item => item.faq);
 };
 
@@ -62,7 +59,7 @@ const AIAssistantSection: React.FC<AIAssistantSectionProps> = ({ onFaqAction, fa
   const [chatMessages, setChatMessages] = useState<ChatMessageType[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [chatSession, setChatSession] = useState<Chat | null>(null);
+  // Removido chatSession diretamente aqui, pois a sessão é stateless no backend
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const [suggestedFAQProposal, setSuggestedFAQProposal] = useState<SuggestedFAQProposal | null>(null);
@@ -73,34 +70,33 @@ const AIAssistantSection: React.FC<AIAssistantSectionProps> = ({ onFaqAction, fa
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
 
-  // Efeito para rolar o chat para o final
   useEffect(scrollToBottom, [chatMessages, suggestedFAQProposal, faqProposalMessage]);
 
-  // Efeito para inicializar a sessão do chat com a IA
+  // Efeito para inicializar a sessão de chat com a IA
+  // MODIFICADO: Apenas envia a mensagem de boas-vindas da IA
   useEffect(() => {
     const initializeChat = async () => {
       setIsLoading(true);
       try {
-        const newChatSession = geminiService.startChat();
-        setChatSession(newChatSession);
         const welcomeMessage: ChatMessageType = {
           id: 'welcome-' + Date.now(),
           text: 'Olá! Sou o TI-Helper, seu assistente de IA. Como posso ajudar com seus problemas de TI hoje?',
           sender: 'ai',
           timestamp: new Date(),
+          imagePreviewUrl: undefined
         };
         setChatMessages([welcomeMessage]);
       } catch (err) {
         console.error("Erro ao inicializar o chat:", err);
-        setError("Não foi possível iniciar o assistente de IA. Verifique a configuração da API Key.");
+        setError("Não foi possível iniciar o assistente de IA.");
       } finally {
         setIsLoading(false);
       }
     };
     initializeChat();
-  }, []);
+  }, []); // A dependência vazia indica que só roda na montagem
 
-  // ATUALIZADO: handleFAQProposal para analisar 'renameCategory'
+  // handleFAQProposal (sem alterações)
   const handleFAQProposal = (aiResponseText: string): boolean => {
     const proposalRegex = /\[SUGGEST_FAQ_PROPOSAL\](\{.*?\})\[\/SUGGEST_FAQ_PROPOSAL\]/s;
     const match = aiResponseText.match(proposalRegex);
@@ -109,7 +105,6 @@ const AIAssistantSection: React.FC<AIAssistantSectionProps> = ({ onFaqAction, fa
       try {
         const proposal: SuggestedFAQProposal = JSON.parse(match[1]);
 
-        // Validação robusta para todas as ações da IA
         if (!proposal.action) {
           setError("Proposta de FAQ malformada: Ação não especificada.");
           return false;
@@ -134,7 +129,7 @@ const AIAssistantSection: React.FC<AIAssistantSectionProps> = ({ onFaqAction, fa
             setError("Proposta de FAQ malformada: Ação 'deleteCategory' sem nome da categoria.");
             return false;
           }
-        } else if (proposal.action === 'renameCategory') { // NOVO: Validação para 'renameCategory'
+        } else if (proposal.action === 'renameCategory') {
           if (!proposal.oldCategoryName || !proposal.newCategoryName) {
             setError("Proposta de FAQ malformada: Ação 'renameCategory' sem nome da categoria antiga ou nova.");
             return false;
@@ -156,41 +151,32 @@ const AIAssistantSection: React.FC<AIAssistantSectionProps> = ({ onFaqAction, fa
   };
 
 
-  // Lógica para enviar mensagem para a IA e processar a resposta
-  const handleSendMessage = async (inputText: string) => {
-    if (!inputText.trim() || suggestedFAQProposal) return; // Impede envio se houver proposta pendente
+  // MODIFICADO: Lógica para enviar mensagem para a IA e processar a resposta (agora com imagem)
+  const handleSendMessage = async (inputText: string, imageFile?: File | null) => {
+    if ((!inputText.trim() && !imageFile) || suggestedFAQProposal) return;
 
+    // Constrói o histórico do chat para enviar ao backend
+    // Exclui a mensagem de boas-vindas inicial se for a primeira mensagem
+    const chatHistoryForBackend = chatMessages
+      .filter(msg => msg.id.startsWith('user-') || msg.id.startsWith('ai-')) // Filtra apenas user/ai messages
+      .map(msg => ({ sender: msg.sender, text: msg.text })); // Cria um formato simples para o histórico
+
+    // Cria a mensagem do usuário com texto e/ou pré-visualização da imagem
     const userMessage: ChatMessageType = {
       id: 'user-' + Date.now(),
       text: inputText,
       sender: 'user',
       timestamp: new Date(),
+      imagePreviewUrl: imageFile ? URL.createObjectURL(imageFile) : undefined // Cria uma URL temporária para pré-visualização
     };
     setChatMessages((prevMessages) => [...prevMessages, userMessage]);
     setIsLoading(true);
     setError(null);
     setFaqProposalMessage(null);
 
-    if (!chatSession) {
-      setError("Sessão de chat não iniciada.");
-      setIsLoading(false);
-      return;
-    }
-
-    // RAG - Retrieval Step: Adiciona contexto de FAQs relevantes para a IA
-    const relevantFAQs = findRelevantFAQs(inputText, faqs);
-    let contextForAI = "";
-    if (relevantFAQs.length > 0) {
-      contextForAI = "Contexto da nossa base de conhecimento (use para responder à pergunta do usuário):\n\n";
-      relevantFAQs.forEach((faq, index) => {
-        contextForAI += `FAQ ${index + 1}:\nID: ${faq.id}\nPergunta: ${faq.question}\nResposta: ${faq.answer}\nCategoria: ${faq.category}\n---\n`;
-      });
-      contextForAI += "\nCom base no contexto acima e no seu conhecimento geral, responda à seguinte pergunta do usuário:\n";
-    }
-    const promptForAI = contextForAI + inputText;
-
     try {
-      const aiResponseText = await geminiService.sendMessageToChat(chatSession, promptForAI);
+      // MODIFICADO: Chama o geminiService, passando o texto, o arquivo de imagem e o histórico
+      const aiResponseText = await geminiService.sendMessageToChat(inputText, imageFile || null, chatHistoryForBackend);
 
       const proposalHandled = handleFAQProposal(aiResponseText);
 
@@ -200,6 +186,7 @@ const AIAssistantSection: React.FC<AIAssistantSectionProps> = ({ onFaqAction, fa
           text: aiResponseText,
           sender: 'ai',
           timestamp: new Date(),
+          imagePreviewUrl: undefined
         };
         setChatMessages((prevMessages) => [...prevMessages, aiMessage]);
       }
@@ -209,15 +196,18 @@ const AIAssistantSection: React.FC<AIAssistantSectionProps> = ({ onFaqAction, fa
       setError(`Erro ao comunicar com o assistente: ${errMessage}`);
     } finally {
       setIsLoading(false);
+      // Revogar a URL temporária da pré-visualização para liberar memória
+      if (userMessage.imagePreviewUrl) {
+          URL.revokeObjectURL(userMessage.imagePreviewUrl);
+      }
     }
   };
 
-  // ATUALIZADO: handleConfirmAddToFAQ para chamar a nova lógica (renameCategory)
+  // handleConfirmAddToFAQ (sem alterações)
   const handleConfirmAddToFAQ = async () => {
     if (suggestedFAQProposal) {
       try {
         let message = '';
-        // Chama a prop onFaqAction com a ação e os dados completos da proposta
         const result = await onFaqAction(suggestedFAQProposal.action, suggestedFAQProposal);
 
         if (suggestedFAQProposal.action === 'add') {
@@ -228,7 +218,7 @@ const AIAssistantSection: React.FC<AIAssistantSectionProps> = ({ onFaqAction, fa
           message = "FAQ excluído com sucesso!";
         } else if (suggestedFAQProposal.action === 'deleteCategory') {
           message = typeof result === 'string' ? result : "FAQs da categoria excluídos com sucesso!";
-        } else if (suggestedFAQProposal.action === 'renameCategory') { // NOVO: Lógica para 'renameCategory'
+        } else if (suggestedFAQProposal.action === 'renameCategory') {
           message = typeof result === 'string' ? result : "Categoria renomeada com sucesso!";
         }
         setFaqProposalMessage(message);
@@ -242,14 +232,11 @@ const AIAssistantSection: React.FC<AIAssistantSectionProps> = ({ onFaqAction, fa
     }
   };
 
-  // Lógica para recusar a proposta de FAQ
+  // handleDeclineAddToFAQ (sem alterações)
   const handleDeclineAddToFAQ = () => {
     setFaqProposalMessage("Ok, não vamos adicionar este item ao FAQ por enquanto.");
     setSuggestedFAQProposal(null);
   };
-
-
-
 
   return (
     <div className="bg-white p-4 sm:p-6 rounded-lg shadow-xl flex flex-col h-[75vh] max-h-[700px]">
@@ -276,33 +263,31 @@ const AIAssistantSection: React.FC<AIAssistantSectionProps> = ({ onFaqAction, fa
         <div className="my-4 p-4 border border-blue-300 bg-blue-50 rounded-lg shadow-md">
           <div className="flex items-center text-blue-700 mb-3">
             <InformationCircleIcon className="w-6 h-6 mr-2" />
-            {/* Título dinâmico da proposta */}
             <h3 className="text-lg font-semibold">
               Sugestão para {
                 suggestedFAQProposal.action === 'add' ? 'Adicionar Novo FAQ' :
                   suggestedFAQProposal.action === 'update' ? 'Atualizar FAQ Existente' :
                     suggestedFAQProposal.action === 'delete' ? 'Excluir FAQ' :
                       suggestedFAQProposal.action === 'deleteCategory' ? 'Excluir FAQs por Categoria' :
-                        'Renomear Categoria' // NOVO: Título para 'renameCategory'
+                        'Renomear Categoria'
               }
             </h3>
           </div>
           <div className="text-sm text-slate-700 space-y-2 mb-4">
-            {/* Mostra detalhes da proposta dinamicamente */}
             <p><strong>Ação:</strong> {
               suggestedFAQProposal.action === 'add' ? 'Adicionar' :
                 suggestedFAQProposal.action === 'update' ? 'Atualizar' :
                   suggestedFAQProposal.action === 'delete' ? 'Excluir' :
                     suggestedFAQProposal.action === 'deleteCategory' ? 'Excluir Categoria' :
-                      'Renomear Categoria' // NOVO: Ação para 'renameCategory'
+                      'Renomear Categoria'
             }</p>
             {suggestedFAQProposal.id && <p><strong>ID do FAQ:</strong> {suggestedFAQProposal.id}</p>}
             {suggestedFAQProposal.categoryName && <p><strong>Categoria a Excluir:</strong> {suggestedFAQProposal.categoryName}</p>}
-            {suggestedFAQProposal.oldCategoryName && <p><strong>Categoria Antiga:</strong> {suggestedFAQProposal.oldCategoryName}</p>} {/* NOVO */}
-            {suggestedFAQProposal.newCategoryName && <p><strong>Nova Categoria:</strong> {suggestedFAQProposal.newCategoryName}</p>} {/* NOVO */}
+            {suggestedFAQProposal.oldCategoryName && <p><strong>Categoria Antiga:</strong> {suggestedFAQProposal.oldCategoryName}</p>}
+            {suggestedFAQProposal.newCategoryName && <p><strong>Nova Categoria:</strong> {suggestedFAQProposal.newCategoryName}</p>}
             {suggestedFAQProposal.question && <p><strong>Pergunta:</strong> {suggestedFAQProposal.question}</p>}
             {suggestedFAQProposal.answer && <p><strong>Resposta:</strong> {suggestedFAQProposal.answer}</p>}
-            {suggestedFAQProposal.category && suggestedFAQProposal.action !== 'deleteCategory' && suggestedFAQProposal.action !== 'renameCategory' && <p><strong>Categoria do FAQ:</strong> {suggestedFAQProposal.category}</p>} {/* Ajuste para não mostrar 'category' em deleteCategory/renameCategory */}
+            {suggestedFAQProposal.category && suggestedFAQProposal.action !== 'deleteCategory' && suggestedFAQProposal.action !== 'renameCategory' && <p><strong>Categoria do FAQ:</strong> {suggestedFAQProposal.category}</p>}
             {suggestedFAQProposal.reason && <p><strong>Motivo:</strong> {suggestedFAQProposal.reason}</p>}
           </div>
           <p className="text-sm text-slate-600 mb-3">
@@ -311,7 +296,7 @@ const AIAssistantSection: React.FC<AIAssistantSectionProps> = ({ onFaqAction, fa
                 suggestedFAQProposal.action === 'update' ? 'atualizar' :
                   suggestedFAQProposal.action === 'delete' ? 'excluir' :
                     suggestedFAQProposal.action === 'deleteCategory' ? 'excluir' :
-                      'renomear' // NOVO: Ação para o botão 'Sim'
+                      'renomear'
             } esta informação ao nosso FAQ para ajudar outros usuários?
           </p>
           <div className="flex justify-end space-x-3">
@@ -334,7 +319,7 @@ const AIAssistantSection: React.FC<AIAssistantSectionProps> = ({ onFaqAction, fa
                   suggestedFAQProposal.action === 'update' ? 'atualizar' :
                     suggestedFAQProposal.action === 'delete' ? 'excluir' :
                       suggestedFAQProposal.action === 'deleteCategory' ? 'excluir' :
-                        'renomear' // NOVO: Ação para o botão 'Sim'
+                        'renomear'
               }
             </button>
           </div>
@@ -349,6 +334,7 @@ const AIAssistantSection: React.FC<AIAssistantSectionProps> = ({ onFaqAction, fa
 
       {error && <p className="text-red-500 text-sm mb-2 text-center p-2 bg-red-100 rounded-md">{error}</p>}
 
+      {/* MODIFICADO: onSendMessage agora passa a imagem */}
       <ChatInput
         onSendMessage={handleSendMessage}
         isLoading={isLoading || !!suggestedFAQProposal}

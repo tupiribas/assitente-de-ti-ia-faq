@@ -6,6 +6,7 @@ export interface FAQ {
 }
 
 export interface ChatMessage {
+  imagePreviewUrl: any;
   id: string;
   text: string;
   sender: 'user' | 'ai';

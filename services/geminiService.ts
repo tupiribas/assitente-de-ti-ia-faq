@@ -1,97 +1,55 @@
-// assistente-de-ti/services/geminiService.ts
+// tupiribas/assitente-de-ti-ia-faq/assitente-de-ti-ia-faq-961e277ace2e20ad889416564a8b8ff5a859f0fc/services/geminiService.ts
 
-import { GoogleGenAI, Chat, GenerateContentResponse } from "@google/genai";
-import { GEMINI_MODEL_NAME, AI_SYSTEM_INSTRUCTION } from '../constants';
+// Removidas as importações do SDK Gemini, pois agora este serviço se comunica com o backend proxy
+// import { GoogleGenAI, Chat, GenerateContentResponse, GenerativeContentPart } from "@google/genai";
+// import { GEMINI_MODEL_NAME, AI_SYSTEM_INSTRUCTION } from '../constants'; // Não necessário aqui
 
-// Ensure API_KEY is available. In a real deployment, this would be set in the environment.
-// For local development, you might use a .env file and a library like dotenv,
-// or set it directly if your build process handles environment variables.
-const API_KEY = process.env.API_KEY;
-
-if (!API_KEY) {
-  console.error("API_KEY for Gemini is not set. Please set the process.env.API_KEY environment variable.");
-  // Throwing an error here would stop the app from loading if the key is missing.
-  // Depending on requirements, you might handle this more gracefully in the UI.
-}
-
-const ai = new GoogleGenAI({ apiKey: API_KEY! }); // The "!" asserts API_KEY is non-null after the check or if assumed to be set by environment.
+const API_BASE_URL_AI = '/api/ai-chat'; // O endpoint do backend para o chat IA
 
 const geminiService = {
-  startChat: (): Chat => {
-    if (!API_KEY) {
-      throw new Error("Gemini API Key não configurada.");
-    }
+  // startChat não é mais necessário, a sessão é stateless via backend
+  // generateContent não é mais necessário
+  // Removidas as chamadas diretas ao SDK GoogleGenAI aqui
+
+  // MODIFICADO: sendMessageToChat agora faz uma requisição fetch para o backend proxy
+  // Ele recebe o texto, opcionalmente um File de imagem, e o histórico do chat.
+  sendMessageToChat: async (
+    message: string,
+    imageFile: File | null,
+    history: any[] // O histórico é passado do frontend
+  ): Promise<string> => {
     try {
-      const chat = ai.chats.create({
-        model: GEMINI_MODEL_NAME,
-        config: {
-          systemInstruction: AI_SYSTEM_INSTRUCTION,
-          // Add other configs like temperature, topK, topP if needed.
-          // For a general IT assistant, default values are often fine to start.
-          // thinkingConfig: { thinkingBudget: 0 } // Disable thinking for low latency if it were a game AI
-        },
+      const formData = new FormData();
+      formData.append('message', message);
+      // Passa o histórico como uma string JSON para que o backend possa parsear
+      formData.append('history', JSON.stringify(history));
+
+      if (imageFile) {
+        formData.append('image', imageFile); // 'image' deve corresponder ao campo esperado no Multer do backend
+      }
+
+      const response = await fetch(API_BASE_URL_AI, {
+        method: 'POST',
+        body: formData,
+        // Content-Type não é definido; o navegador o faz automaticamente com FormData
       });
-      return chat;
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || `Erro HTTP: ${response.status} - ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      return data.response; // Espera-se que o backend retorne { response: "texto da IA" }
     } catch (error) {
-      console.error("Erro ao criar sessão de chat com Gemini:", error);
-      throw new Error("Não foi possível iniciar o chat com o assistente IA. Verifique as configurações.");
+      console.error("Erro ao enviar mensagem para o backend proxy da IA:", error);
+      if (error instanceof Error && error.message.includes('API key not valid')) {
+        // Esta mensagem de erro de API Key agora viria do SEU backend, não diretamente da Gemini
+        throw new Error("Erro de autenticação da API Gemini. Por favor, verifique sua API Key do Gemini no servidor.");
+      }
+      throw new Error(`Erro de comunicação com o assistente IA: ${error instanceof Error ? error.message : "Erro desconhecido."}`);
     }
   },
-
-  sendMessageToChat: async (chat: Chat, message: string): Promise<string> => {
-    if (!API_KEY) {
-      throw new Error("Gemini API Key não configurada.");
-    }
-    try {
-      const result: GenerateContentResponse = await chat.sendMessage({ message: message });
-      // Directly access the text property as per documentation.
-      const text = result.text;
-      if (typeof text !== 'string') {
-        console.error("Resposta da IA não é uma string:", text);
-        return "Desculpe, não consegui processar essa resposta.";
-      }
-      return text;
-    } catch (error) {
-      console.error("Erro ao enviar mensagem para Gemini:", error);
-      // More specific error handling can be added here (e.g., for different error codes from API)
-      if (error instanceof Error) {
-        // Check for specific error messages or types if needed
-        if (error.message.includes('API key not valid')) {
-          throw new Error("Chave de API inválida. Por favor, verifique sua API Key do Gemini.");
-        }
-        throw new Error(`Erro de comunicação com o assistente IA: ${error.message}`);
-      }
-      throw new Error("Ocorreu um erro desconhecido ao contatar o assistente IA.");
-    }
-  },
-
-  // Example of a simple one-off generation if not using chat history
-  generateContent: async (prompt: string): Promise<string> => {
-    if (!API_KEY) {
-      throw new Error("Gemini API Key não configurada.");
-    }
-    try {
-      const response: GenerateContentResponse = await ai.models.generateContent({
-        model: GEMINI_MODEL_NAME,
-        contents: prompt,
-        config: {
-          systemInstruction: AI_SYSTEM_INSTRUCTION,
-        }
-      });
-      const text = response.text;
-      if (typeof text !== 'string') {
-        console.error("Resposta da IA não é uma string:", text);
-        return "Desculpe, não consegui processar essa resposta.";
-      }
-      return text;
-    } catch (error) {
-      console.error("Erro ao gerar conteúdo com Gemini:", error);
-      if (error instanceof Error) {
-        throw new Error(`Erro de comunicação com o Gemini: ${error.message}`);
-      }
-      throw new Error("Ocorreu um erro desconhecido ao comunicar com Gemini.");
-    }
-  }
 };
 
 export { geminiService };
