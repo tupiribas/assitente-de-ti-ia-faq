@@ -3,7 +3,7 @@
 import React from 'react';
 import { FAQ } from '../types';
 import { ChevronDownIcon, ChevronUpIcon, PencilIcon, TrashIcon } from './Icons';
-import ReactMarkdown from 'react-markdown';
+import ReactMarkdown from 'react-markdown'; // <--- Deve estar aqui
 
 interface FAQItemProps {
   faq: FAQ;
@@ -26,9 +26,8 @@ const FAQItem: React.FC<FAQItemProps> = ({ faq, isExpanded, onToggle, onEdit, on
       </button>
       {isExpanded && (
         <div className="p-4 border-t border-slate-200 bg-slate-50 flex justify-between items-center">
-          {/* <p className="text-slate-600 whitespace-pre-line text-sm leading-relaxed pr-4">{faq.answer}</p> */}
           {/* NOVO: Renderiza o conteúdo do FAQ.answer como Markdown */}
-          <div className="prose prose-sm max-w-none text-slate-600 leading-relaxed pr-4"> {/* Adicione 'prose' do Tailwind Typography se configurado, ou estilize manualmente */}
+          <div className="prose prose-sm max-w-none text-slate-600 leading-relaxed pr-4">
             <ReactMarkdown>
               {faq.answer}
             </ReactMarkdown>

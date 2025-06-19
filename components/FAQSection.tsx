@@ -4,22 +4,19 @@ import React, { useState, useMemo } from 'react';
 import { FAQ } from '../types';
 import FAQItem from './FAQItem';
 import { SearchIcon } from './Icons';
-import ManageFAQsSection from './ManageFAQsSection'; // NOVO: Importar ManageFAQsSection para o modal de edição
+// ManageFAQsSection não é mais importado aqui, pois não é mais um modal interno.
 
 interface FAQSectionProps {
   faqs: FAQ[];
-  // NOVO: Props para as funções de CRUD que virão do App.tsx
   onEditFAQ: (faq: FAQ) => void;
   onDeleteFAQ: (id: string) => void;
-  // NOVO: Prop para a função de adicionar (ManageFAQsSection precisa dela no modo de edição)
-  onAddFAQ: (newFaqData: Omit<FAQ, 'id'>) => Promise<FAQ>;
+  // onAddFAQ não é mais necessário aqui
 }
 
-const FAQSection: React.FC<FAQSectionProps> = ({ faqs, onEditFAQ, onDeleteFAQ, onAddFAQ }) => {
+const FAQSection: React.FC<FAQSectionProps> = ({ faqs, onEditFAQ, onDeleteFAQ }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  // NOVO: Estado para controlar o FAQ que está sendo editado
-  const [editingFaq, setEditingFaq] = useState<FAQ | null>(null);
+  // editingFaq e as funções de handleSaveEditedFAQ/handleCancelEdit são removidos
 
   const filteredFAQs = useMemo(() => {
     if (!searchTerm) {
@@ -47,31 +44,15 @@ const FAQSection: React.FC<FAQSectionProps> = ({ faqs, onEditFAQ, onDeleteFAQ, o
     setExpandedId(expandedId === id ? null : id);
   };
 
-  // NOVO: Função para lidar com o clique em Editar
+  // Funções de clique em Editar/Excluir permanecem as mesmas, mas as props virão do App.tsx
   const handleEditClick = (faq: FAQ) => {
-    setEditingFaq(faq); // Define o FAQ que será editado
+    onEditFAQ(faq); // Chama a prop que agora fará a navegação
   };
 
-  // NOVO: Função para lidar com o clique em Excluir
   const handleDeleteClick = (id: string) => {
     if (window.confirm("Tem certeza que deseja excluir este FAQ?")) {
-      onDeleteFAQ(id); // Chama a função onDeleteFAQ passada via props
+      onDeleteFAQ(id); // Chama a prop
     }
-  };
-
-  // NOVO: Função para lidar com o salvamento de um FAQ editado
-  const handleSaveEditedFAQ = async (updatedFaqData: Omit<FAQ, 'id'>) => {
-    if (editingFaq) {
-      // Chama a função onEditFAQ do App.tsx
-      await onEditFAQ({ ...updatedFaqData, id: editingFaq.id });
-      setEditingFaq(null); // Fecha o modal de edição
-      setExpandedId(null); // Colapsa o item após edição
-    }
-  };
-
-  // NOVO: Função para cancelar a edição
-  const handleCancelEdit = () => {
-    setEditingFaq(null);
   };
 
 
@@ -102,8 +83,8 @@ const FAQSection: React.FC<FAQSectionProps> = ({ faqs, onEditFAQ, onDeleteFAQ, o
                   faq={faq}
                   isExpanded={expandedId === faq.id}
                   onToggle={() => toggleFAQ(faq.id)}
-                  onEdit={handleEditClick}   // NOVO: Passando a função handleEditClick
-                  onDelete={handleDeleteClick} // NOVO: Passando a função handleDeleteClick
+                  onEdit={handleEditClick}
+                  onDelete={handleDeleteClick}
                 />
               ))}
             </div>
@@ -115,22 +96,7 @@ const FAQSection: React.FC<FAQSectionProps> = ({ faqs, onEditFAQ, onDeleteFAQ, o
         </p>
       )}
 
-      {/* NOVO: Modal de Edição (usando ManageFAQsSection) */}
-      {editingFaq && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="relative bg-white p-6 sm:p-8 rounded-lg shadow-xl max-w-2xl w-full">
-            <h2 className="text-3xl font-bold text-slate-800 mb-6 text-center">Editar FAQ</h2>
-            {/* O ManageFAQsSection será adaptado para o modo de edição */}
-            {/* Ele precisará de um prop para indicar que está em modo de edição e para pré-preencher os campos */}
-            <ManageFAQsSection
-              faqToEdit={editingFaq} // NOVO: Passa o FAQ a ser editado
-              onSaveEditedFAQ={handleSaveEditedFAQ} // NOVO: Função para salvar a edição
-              onCancel={handleCancelEdit} // NOVO: Função para cancelar
-              onAddFAQ={onAddFAQ} // onAddFAQ é mantido porque ManageFAQsSection ainda tem essa prop
-            />
-          </div>
-        </div>
-      )}
+      {/* O modal de edição (ManageFAQsSection) foi removido daqui e será renderizado por uma rota separada em App.tsx */}
     </div>
   );
 };

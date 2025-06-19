@@ -1,13 +1,14 @@
+// assistente-de-ti/components/ManageFAQsSection.tsx
+
 import React, { useState, useEffect, useRef } from 'react';
 import { FAQ } from '../types';
 import LoadingSpinner from './LoadingSpinner';
 
 interface ManageFAQsSectionProps {
-  onAddFAQ: (newFaqData: Omit<FAQ, 'id'>) => Promise<FAQ>; // Para adicionar (modo padrão)
-  // NOVOS: Props para o modo de edição
-  faqToEdit?: FAQ | null; // O FAQ que está sendo editado (se houver)
-  onSaveEditedFAQ?: (updatedFaqData: Omit<FAQ, 'id'>) => Promise<void>; // Função para salvar a edição
-  onCancel?: () => void; // Função para cancelar a edição
+  onAddFAQ: (newFaqData: Omit<FAQ, 'id'>) => Promise<FAQ>;
+  faqToEdit?: FAQ | null; // Continua opcional pois é null para nova criação
+  onSaveEditedFAQ: (updatedFaqData: Omit<FAQ, 'id'>) => Promise<void>; // Agora é obrigatório
+  onCancel: () => void; // Agora é obrigatório
 }
 
 const ManageFAQsSection: React.FC<ManageFAQsSectionProps> = ({ onAddFAQ, faqToEdit, onSaveEditedFAQ, onCancel }) => {
@@ -18,36 +19,33 @@ const ManageFAQsSection: React.FC<ManageFAQsSectionProps> = ({ onAddFAQ, faqToEd
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // NOVO ESTADO: Para gerenciar o upload de imgam
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [uploadingImage, setUploadingImage] = useState(false);
   const [uploadedImageUrl, setUploadedImageUrl] = useState<string | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null); // Ref para resetar o input de arquivo
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Efeito para pré-preencher os campos quando em modo de edição
   useEffect(() => {
     if (faqToEdit) {
       setQuestion(faqToEdit.question);
       setAnswer(faqToEdit.answer);
       setCategory(faqToEdit.category);
     } else {
-      // Limpa os campos se não estiver em modo de edição
       setQuestion('');
       setAnswer('');
       setCategory('');
     }
     setError(null);
     setSuccessMessage(null);
-    setUploadedImageUrl(null); // Limpa a URL da imagem ao mudar de modo
+    setUploadedImageUrl(null);
     if (fileInputRef.current) {
-      fileInputRef.current.value = ''; // Reseta o input de arquivo
+      fileInputRef.current.value = '';
     }
   }, [faqToEdit]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       setSelectedFile(e.target.files[0]);
-      setUploadedImageUrl(null); // Limpa a URL anterior ao selecionar um novo arquivo
+      setUploadedImageUrl(null);
     } else {
       setSelectedFile(null);
     }
@@ -64,13 +62,12 @@ const ManageFAQsSection: React.FC<ManageFAQsSectionProps> = ({ onAddFAQ, faqToEd
     setSuccessMessage(null);
 
     const formData = new FormData();
-    formData.append('image', selectedFile); // 'image' deve corresponder ao campo esperado no Multer (upload.single('image'))
+    formData.append('image', selectedFile);
 
     try {
       const response = await fetch('/api/upload-image', {
         method: 'POST',
         body: formData,
-        // Não defina Content-Type; o navegador faz isso automaticamente com FormData
       });
 
       if (!response.ok) {
@@ -81,7 +78,6 @@ const ManageFAQsSection: React.FC<ManageFAQsSectionProps> = ({ onAddFAQ, faqToEd
       const data = await response.json();
       setUploadedImageUrl(data.imageUrl);
       setSuccessMessage('Imagem enviada com sucesso! Copie a URL para usar no FAQ.');
-      // Opcional: Adicionar automaticamente a URL no campo de resposta
       setAnswer(prevAnswer => prevAnswer + `\n\n![Descrição da Imagem](${data.imageUrl})\n`);
 
     } catch (err) {
@@ -89,12 +85,13 @@ const ManageFAQsSection: React.FC<ManageFAQsSectionProps> = ({ onAddFAQ, faqToEd
       setError(`Erro no upload: ${errorMessage}`);
     } finally {
       setUploadingImage(false);
-      setSelectedFile(null); // Limpa o arquivo selecionado após o upload
+      setSelectedFile(null);
       if (fileInputRef.current) {
-        fileInputRef.current.value = ''; // Reseta o input de arquivo
+        fileInputRef.current.value = '';
       }
     }
   };
+
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -109,13 +106,11 @@ const ManageFAQsSection: React.FC<ManageFAQsSectionProps> = ({ onAddFAQ, faqToEd
     }
 
     try {
-      if (faqToEdit && onSaveEditedFAQ) {
-        // Modo de Edição
-        await onSaveEditedFAQ({ question, answer, category });
+      if (faqToEdit) { // Se for modo de edição
+        await onSaveEditedFAQ({ question, answer, category }); // Chama a prop para salvar edição
         setSuccessMessage('FAQ atualizado com sucesso!');
-      } else {
-        // Modo de Adição
-        await onAddFAQ({ question, answer, category });
+      } else { // Se for modo de criação
+        await onAddFAQ({ question, answer, category }); // Chama a prop para adicionar
         setQuestion('');
         setAnswer('');
         setCategory('');
@@ -131,10 +126,10 @@ const ManageFAQsSection: React.FC<ManageFAQsSectionProps> = ({ onAddFAQ, faqToEd
     }
   };
 
-  // NOVO: Título dinâmico
   const formTitle = faqToEdit ? `Editar FAQ (ID: ${faqToEdit.id})` : 'Adicionar Novo FAQ';
 
   return (
+    // Ajuste no padding para telas menores: p-4 (padrão) sm:p-8 (maior)
     <div className="bg-white p-4 sm:p-8 rounded-lg shadow-xl max-w-2xl mx-auto">
       <h2 className="text-3xl font-bold text-slate-800 mb-6 text-center">{formTitle}</h2>
 
@@ -170,8 +165,9 @@ const ManageFAQsSection: React.FC<ManageFAQsSectionProps> = ({ onAddFAQ, faqToEd
             disabled={isSubmitting || uploadingImage}
           />
         </div>
-        {/* NOVO: Seção de Upload de Imagem */}
-        <div className="pt-0 mt-0 space-y-4">
+
+        {/* Seção de Upload de Imagem */}
+        <div className="border-t border-slate-200 pt-6 mt-6 space-y-4">
           <h3 className="text-lg font-semibold text-slate-800">Anexar Imagem</h3>
           <input
             type="file"
@@ -197,7 +193,7 @@ const ManageFAQsSection: React.FC<ManageFAQsSectionProps> = ({ onAddFAQ, faqToEd
           {uploadedImageUrl && (
             <p className="text-sm text-blue-600 bg-blue-50 p-3 rounded-md break-all">
               URL da Imagem: <a href={uploadedImageUrl} target="_blank" rel="noopener noreferrer" className="underline">{uploadedImageUrl}</a>
-              <br />
+              <br/>
               **Sugestão Markdown:** `![Alt Text da Imagem]({uploadedImageUrl})`
             </p>
           )}
@@ -233,13 +229,13 @@ const ManageFAQsSection: React.FC<ManageFAQsSectionProps> = ({ onAddFAQ, faqToEd
           </p>
         )}
 
+        {/* Ajuste nos botões para responsividade */}
         <div className="flex flex-col space-y-3 sm:flex-row sm:space-x-3 sm:space-y-0">
-          {faqToEdit && onCancel && (
+          {/* O botão Cancelar será exibido se onCancel for fornecido (sempre será por FAQManagePage) */}
+          {onCancel && (
             <button
               type="button"
               onClick={onCancel}
-              // w-full: ocupa 100% da largura em telas pequenas
-              // sm:w-auto: largura automática (baseada no conteúdo) em telas 'sm' e maiores
               className="w-full sm:w-auto bg-slate-400 text-white font-semibold py-3 px-4 rounded-lg hover:bg-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-500 focus:ring-offset-2 transition-colors duration-150 ease-in-out disabled:opacity-50 disabled:cursor-not-allowed"
               disabled={isSubmitting || uploadingImage}
             >
@@ -248,8 +244,6 @@ const ManageFAQsSection: React.FC<ManageFAQsSectionProps> = ({ onAddFAQ, faqToEd
           )}
           <button
             type="submit"
-            // w-full: ocupa 100% da largura em telas pequenas
-            // sm:w-auto: largura automática (baseada no conteúdo) em telas 'sm' e maiores
             className="w-full sm:w-auto bg-blue-600 text-white font-semibold py-3 px-4 rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors duration-150 ease-in-out disabled:opacity-50 disabled:cursor-not-allowed"
             disabled={isSubmitting || uploadingImage}
           >

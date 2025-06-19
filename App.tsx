@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { BrowserRouter as Router, Routes, Route, useNavigate, useParams } from 'react-router-dom';
 import Header from './components/Header';
 import FAQSection from './components/FAQSection';
 import AIAssistantSection from './components/AIAssistantSection';
@@ -7,7 +8,7 @@ import Footer from './components/Footer';
 import { AppView, FAQ as FAQType } from './types';
 import { faqService } from './services/faqService';
 
-// NOVO: Função auxiliar para extrair URLs de imagem de texto Markdown
+// Função auxiliar para extrair URLs de imagem de texto Markdown
 const extractImageUrlsFromMarkdown = (markdownText: string): string[] => {
   const imageUrls: string[] = [];
   // Regex para encontrar sintaxe de imagem Markdown: ![alt text](url)
@@ -21,7 +22,7 @@ const extractImageUrlsFromMarkdown = (markdownText: string): string[] => {
   return imageUrls;
 };
 
-// NOVO: Função para obter o filename a partir da URL (ex: /uploads/image-123.png -> image-123.png)
+// Função para obter o filename a partir da URL (ex: /uploads/image-123.png -> image-123.png)
 const getFilenameFromImageUrl = (imageUrl: string): string | null => {
   // Assume que a URL é algo como /uploads/nome-do-arquivo.extensao
   const parts = imageUrl.split('/');
@@ -33,10 +34,50 @@ const getFilenameFromImageUrl = (imageUrl: string): string | null => {
   return null;
 };
 
-const App: React.FC = () => {
-  const [currentView, setCurrentView] = useState<AppView>(AppView.FAQ);
+// NOVO: Componente auxiliar para a página de edição/criação de FAQ (renderizado pelas rotas)
+const FAQManagePage: React.FC<{
+  faqs: FAQType[];
+  onAddFAQ: (newFaqData: Omit<FAQType, 'id'>) => Promise<FAQType>;
+  onSaveEditedFAQ: (updatedFaqData: Omit<FAQType, 'id'> & { id?: string }) => Promise<void>;
+  // onCancel é adaptado dentro deste componente
+}> = ({ faqs, onAddFAQ, onSaveEditedFAQ }) => {
+  const { id } = useParams<{ id: string }>(); // Pega o ID da URL
+  // Encontra a FAQ para edição, ou null se for uma nova FAQ (rota /new)
+  const faqToEdit = id ? faqs.find(faq => faq.id === id) : null;
+  const navigate = useNavigate();
+
+  // Função para salvar edição adaptada para navegar de volta
+  const handleSave = async (updatedFaqData: Omit<FAQType, 'id'>) => {
+    if (faqToEdit) { // Modo de edição
+      await onSaveEditedFAQ({ ...updatedFaqData, id: faqToEdit.id });
+      navigate('/faqs'); // Volta para a lista de FAQs após salvar
+    } else { // Modo de criação (se esta página for usada para /new também)
+      await onAddFAQ(updatedFfaqData);
+      navigate('/faqs'); // Volta para a lista de FAQs após adicionar
+    }
+  };
+
+  // Função para cancelar edição/criação, adaptada para navegar de volta
+  const handleCancel = () => {
+    navigate('/faqs'); // Volta para a lista de FAQs
+  };
+
+  return (
+    <ManageFAQsSection
+      faqToEdit={faqToEdit}
+      onAddFAQ={onAddFAQ}
+      onSaveEditedFAQ={handleSave}
+      onCancel={handleCancel}
+    />
+  );
+};
+
+
+// NOVO: Componente Wrapper para o conteúdo principal que usa o roteador e hooks
+const AppContent: React.FC = () => {
   const [faqs, setFaqs] = useState<FAQType[]>([]);
   const [loadingFaqs, setLoadingFaqs] = useState(true);
+  const navigate = useNavigate(); // Hook para navegação
 
   // Carregar FAQs ao montar o componente
   useEffect(() => {
@@ -54,7 +95,7 @@ const App: React.FC = () => {
     fetchFaqs();
   }, []);
 
-  // Função para adicionar FAQ (usada apenas por ManageFAQsSection na view MANAGE_FAQS)
+  // Função para adicionar FAQ
   const addFAQ = useCallback(async (newFaqData: Omit<FAQType, 'id'>) => {
     try {
       const addedFaq = await faqService.saveFAQs(newFaqData);
@@ -66,10 +107,9 @@ const App: React.FC = () => {
     }
   }, []);
 
-  // ÚNICA DECLARAÇÃO: Lida com todas as ações de FAQ (usada por AIAssistantSection e FAQSection)
+  // Lida com todas as ações de FAQ (usada por AIAssistantSection e FAQSection)
   const handleFaqAction = useCallback(async (
     action: 'add' | 'update' | 'delete' | 'deleteCategory' | 'renameCategory',
-    // ATUALIZADO: faqData agora PODE INCLUIR 'answer' para a ação de 'delete'.
     faqData: Omit<FAQType, 'id'> & { id?: string; categoryName?: string; oldCategoryName?: string; newCategoryName?: string; reason?: string; answer?: string }
   ) => {
     try {
@@ -81,52 +121,74 @@ const App: React.FC = () => {
       } else if (action === 'update') {
         if (!faqData.id) throw new Error("ID do FAQ é obrigatório para atualização.");
 
-        // NOVO (Opcional, mas recomendado para updates): Lógica para remover imagens antigas se um FAQ for atualizado e as imagens forem removidas do texto
-        // Isso seria mais complexo: exigiria buscar o FAQ antigo, extrair URLs, comparar com as novas URLs.
-        // Por simplicidade, este exemplo foca a remoção de imagens APENAS na exclusão completa do FAQ.
+        // NOVO: Lógica para remover imagens antigas se o FAQ for atualizado e as imagens forem removidas do texto
+        const oldFaq = faqs.find(f => f.id === faqData.id); // Encontra a versão antiga do FAQ no estado
+        if (oldFaq && oldFaq.answer && faqData.answer !== undefined) { // Certifica-se de que a resposta antiga existe e a nova resposta foi fornecida
+            const oldImageUrls = extractImageUrlsFromMarkdown(oldFaq.answer);
+            const newImageUrls = extractImageUrlsFromMarkdown(faqData.answer); // Usar a nova resposta de faqData
 
+            // Identificar imagens removidas (presentes na antiga, mas não na nova)
+            const imagesToRemove = oldImageUrls.filter(oldUrl => !newImageUrls.includes(oldUrl));
+
+            for (const imageUrl of imagesToRemove) {
+                const filename = getFilenameFromImageUrl(imageUrl);
+                if (filename) {
+                    try {
+                        const response = await fetch(`/api/uploads/${filename}`, {
+                            method: 'DELETE',
+                        });
+                        if (!response.ok) {
+                            const errorText = await response.text();
+                            console.warn(`Aviso: Falha ao remover imagem ${filename} do servidor (Status: ${response.status}). Detalhes: ${errorText}`);
+                        } else {
+                            console.log(`Imagem ${filename} associada ao FAQ ${faqData.id} removida do servidor durante a atualização.`);
+                        }
+                    } catch (imageDeleteError) {
+                        console.warn(`Aviso: Erro inesperado ao tentar remover imagem ${filename} durante a atualização:`, imageDeleteError);
+                    }
+                }
+            }
+        }
+        
         result = await faqService.updateFAQ(faqData as FAQType);
         setFaqs((prevFaqs) => prevFaqs.map(f => (f.id === (result as FAQType).id ? (result as FAQType) : f)));
       } else if (action === 'delete') {
         if (!faqData.id) throw new Error("ID do FAQ é obrigatório para exclusão.");
 
-        // ATUALIZADO: Acessar a resposta da FAQ diretamente de faqData.answer se foi passada.
-        // Caso contrário (fallback), tenta encontrar no estado 'faqs'.
         const faqAnswerForImageDeletion = faqData.answer || faqs.find(f => f.id === faqData.id)?.answer;
 
-        if (faqAnswerForImageDeletion) { // Verifica se há conteúdo de resposta para extrair imagens
-          const imageUrls = extractImageUrlsFromMarkdown(faqAnswerForImageDeletion);
-          for (const imageUrl of imageUrls) {
-            const filename = getFilenameFromImageUrl(imageUrl);
-            if (filename) {
-              try {
-                // Chama o novo endpoint DELETE /api/uploads/:filename
-                const response = await fetch(`/api/uploads/${filename}`, {
-                  method: 'DELETE',
-                });
-                if (!response.ok) {
-                  const errorText = await response.text();
-                  console.warn(`Aviso: Falha ao remover imagem ${filename} do servidor (Status: ${response.status}). Detalhes: ${errorText}`);
-                } else {
-                  console.log(`Imagem ${filename} associada ao FAQ ${faqData.id} removida do servidor.`);
+        if (faqAnswerForImageDeletion) {
+            const imageUrls = extractImageUrlsFromMarkdown(faqAnswerForImageDeletion);
+            for (const imageUrl of imageUrls) {
+                const filename = getFilenameFromImageUrl(imageUrl);
+                if (filename) {
+                    try {
+                        const response = await fetch(`/api/uploads/${filename}`, {
+                            method: 'DELETE',
+                        });
+                        if (!response.ok) {
+                            const errorText = await response.text();
+                            console.warn(`Aviso: Falha ao remover imagem ${filename} do servidor (Status: ${response.status}). Detalhes: ${errorText}`);
+                        } else {
+                            console.log(`Imagem ${filename} associada ao FAQ ${faqData.id} removida do servidor.`);
+                        }
+                    } catch (imageDeleteError) {
+                        console.warn(`Aviso: Erro inesperado ao tentar remover imagem ${filename}:`, imageDeleteError);
+                    }
                 }
-              } catch (imageDeleteError) {
-                console.warn(`Aviso: Erro inesperado ao tentar remover imagem ${filename}:`, imageDeleteError);
-              }
             }
-          }
         } else {
-          console.warn(`Aviso: Resposta da FAQ (${faqData.id}) não disponível para extração de imagem. Imagens não serão removidas.`);
+            console.warn(`Aviso: Resposta da FAQ (${faqData.id}) não disponível para extração de imagem. Imagens não serão removidas.`);
         }
 
-        await faqService.deleteFAQ(faqData.id); // Exclui o registro do FAQ
+        await faqService.deleteFAQ(faqData.id);
         setFaqs((prevFaqs) => prevFaqs.filter(f => f.id !== faqData.id));
         result = "FAQ excluído com sucesso!";
       } else if (action === 'deleteCategory') {
         if (!faqData.categoryName) throw new Error("Nome da categoria é obrigatório para exclusão por categoria.");
         // Lógica mais complexa para deletar imagens aqui (iterar FAQs da categoria)
         result = await faqService.deleteFAQsByCategory(faqData.categoryName);
-        setFaqs((prevFaqs) => prevFaqs.filter(f => f.category.toLowerCase() !== faqData.categoryName!.toLowerCase()));
+        setFaqs((prevFafs) => prevFafs.filter(f => f.category.toLowerCase() !== faqData.categoryName!.toLowerCase()));
       } else if (action === 'renameCategory') {
         if (!faqData.oldCategoryName || !faqData.newCategoryName) {
           throw new Error("Nomes da categoria antiga e nova são obrigatórios para renomear.");
@@ -145,18 +207,21 @@ const App: React.FC = () => {
     }
   }, [faqs]); // Dependência em 'faqs' para o 'find' fallback
 
-  // Funções específicas para passar ao FAQSection
-  const handleEditFAQClick = useCallback(async (updatedFaq: FAQType) => {
+  // Funções para passar ao FAQSection - agora elas navegam
+  const handleSaveEditedFAQ = useCallback(async (updatedFaqData: FAQType) => {
     try {
-      await handleFaqAction('update', updatedFaq);
-      console.log(`FAQ ${updatedFaq.id} atualizado com sucesso.`);
+      await handleFaqAction('update', updatedFaqData);
+      console.log(`FAQ ${updatedFaqData.id} atualizado com sucesso.`);
     } catch (error) {
-      console.error(`Falha ao atualizar FAQ ${updatedFaq.id}:`, error);
+      console.error(`Falha ao atualizar FAQ ${updatedFaqData.id}:`, error);
       alert(`Falha ao atualizar FAQ: ${error instanceof Error ? error.message : "Erro desconhecido."}`);
     }
   }, [handleFaqAction]);
 
-  // ATUALIZADO: handleDeleteFAQClick para passar a resposta diretamente para handleFaqAction
+  const handleEditFAQClick = useCallback((faq: FAQType) => {
+    navigate(`/manage-faq/${faq.id}`); // Navega para a rota de edição com o ID
+  }, [navigate]);
+
   const handleDeleteFAQClick = useCallback(async (id: string) => {
     try {
       // Encontra a FAQ completa NO MOMENTO DA CLICADA para garantir que a `answer` não esteja stale
@@ -174,36 +239,62 @@ const App: React.FC = () => {
       console.error(`Falha ao excluir FAQ ${id}:`, error);
       alert(`Falha ao excluir FAQ: ${error instanceof Error ? error.message : "Erro desconhecido."}`);
     }
-  }, [faqs, handleFaqAction]); // Dependências: 'faqs' para o find, 'handleFaqAction' para a chamada
+  }, [faqs, handleFaqAction]);
+
 
   return (
     <div className="min-h-screen flex flex-col">
-      <Header currentView={currentView} setCurrentView={setCurrentView} />
+      {/* O Header agora usará o useNavigate para mudar de rota */}
+      <Header /> {/* currentView e setCurrentView não são mais passados diretamente */}
       <main className="flex-grow container mx-auto px-4 py-8">
         {loadingFaqs ? (
           <div className="text-center text-slate-600">Carregando FAQs...</div>
         ) : (
-          <>
-            {currentView === AppView.FAQ && (
-              <FAQSection
-                faqs={faqs}
-                onEditFAQ={handleEditFAQClick}
-                onDeleteFAQ={handleDeleteFAQClick}
-              // onAddFAQ={addFAQ} // Removido anteriormente, está correto
-              />
-            )}
-            {currentView === AppView.AI_ASSISTANT && (
-              <AIAssistantSection
-                faqs={faqs}
-                onFaqAction={handleFaqAction}
-              />
-            )}
-            {currentView === AppView.MANAGE_FAQS && <ManageFAQsSection onAddFAQ={addFAQ} />}
-          </>
+          <Routes> {/* <--- Define as rotas aqui */}
+            {/* Rota padrão para / e /faqs */}
+            <Route path="/" element={<FAQSection
+              faqs={faqs}
+              onEditFAQ={handleEditFAQClick}
+              onDeleteFAQ={handleDeleteFAQClick}
+            />} />
+            <Route path="/faqs" element={<FAQSection
+              faqs={faqs}
+              onEditFAQ={handleEditFAQClick}
+              onDeleteFAQ={handleDeleteFAQClick}
+            />} />
+            {/* Rota para o Assistente IA */}
+            <Route path="/ai-assistant" element={<AIAssistantSection
+              faqs={faqs}
+              onFaqAction={handleFaqAction}
+            />} />
+            {/* Rota para CRIAR NOVO FAQ */}
+            <Route path="/manage-faq/new" element={<FAQManagePage
+              faqs={faqs} // Passa faqs para que FAQManagePage possa encontrar a FAQ para edição
+              onAddFAQ={addFAQ} // Passa a função para adicionar
+              onSaveEditedFAQ={handleSaveEditedFAQ} // Passa a função para salvar edição
+              // onCancel é adaptado dentro de FAQManagePage
+            />} />
+            {/* Rota para EDITAR FAQ EXISTENTE */}
+            <Route path="/manage-faq/:id" element={<FAQManagePage
+              faqs={faqs} // Passa faqs para que FAQManagePage possa encontrar a FAQ para edição
+              onAddFAQ={addFAQ} // Passa a função para adicionar (necessário pois ManageFAQsSection a espera)
+              onSaveEditedFAQ={handleSaveEditedFAQ} // Passa a função para salvar edição
+              // onCancel é adaptado dentro de FAQManagePage
+            />} />
+          </Routes>
         )}
       </main>
       <Footer />
     </div>
+  );
+};
+
+// Componente App principal que envolve AppContent com BrowserRouter
+const App: React.FC = () => {
+  return (
+    <Router>
+      <AppContent />
+    </Router>
   );
 };
 

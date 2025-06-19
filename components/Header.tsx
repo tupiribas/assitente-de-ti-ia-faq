@@ -1,16 +1,19 @@
 import React from 'react';
-import { AppView } from '../types';
-import { LightBulbIcon, SpeechBubbleIcon, PlusCircleIcon } from './Icons'; // Updated Icons
+import { useNavigate } from 'react-router-dom'; // <--- NOVA IMPORTAÇÃO
+// Removida importação de AppView, não é mais necessária aqui
+import { LightBulbIcon, SpeechBubbleIcon, PlusCircleIcon } from './Icons';
 
-interface HeaderProps {
-  currentView: AppView;
-  setCurrentView: (view: AppView) => void;
-}
+// Header não recebe mais props de visualização
+const Header: React.FC = () => {
+  const navigate = useNavigate(); // <--- NOVO: Hook para navegação
 
-const Header: React.FC<HeaderProps> = ({ currentView, setCurrentView }) => {
+  // As classes de botão agora gerenciam o estilo do link ativo/inativo
   const navButtonClasses = "flex items-center px-4 py-2 rounded-md text-sm font-medium transition-colors duration-150 ease-in-out";
-  const activeClasses = "bg-blue-600 text-white";
-  const inactiveClasses = "text-slate-700 hover:bg-blue-100 hover:text-blue-700";
+  // As classes ativas/inativas não serão mais controladas por 'currentView' diretamente
+  // Em uma aplicação React Router, o estilo ativo é geralmente feito com NavLink ou lógica de rota atual.
+  // Por simplicidade aqui, removeremos a lógica de 'activeClasses' e 'inactiveClasses' por enquanto.
+  const baseButtonClasses = "flex items-center px-4 py-2 rounded-md text-sm font-medium transition-colors duration-150 ease-in-out text-slate-700 hover:bg-blue-100 hover:text-blue-700";
+
 
   return (
     <header className="bg-white shadow-md">
@@ -23,28 +26,28 @@ const Header: React.FC<HeaderProps> = ({ currentView, setCurrentView }) => {
         </div>
         <nav className="flex space-x-2 sm:space-x-4">
           <button
-            onClick={() => setCurrentView(AppView.FAQ)}
-            className={`${navButtonClasses} ${currentView === AppView.FAQ ? activeClasses : inactiveClasses}`}
+            onClick={() => navigate('/faqs')} // <--- Usa navigate
+            className={baseButtonClasses}
             aria-label="Perguntas Frequentes"
           >
             <LightBulbIcon className="w-5 h-5 mr-2" />
             FAQs
           </button>
           <button
-            onClick={() => setCurrentView(AppView.AI_ASSISTANT)}
-            className={`${navButtonClasses} ${currentView === AppView.AI_ASSISTANT ? activeClasses : inactiveClasses}`}
+            onClick={() => navigate('/ai-assistant')} // <--- Usa navigate
+            className={baseButtonClasses}
             aria-label="Assistente de Inteligência Artificial"
           >
-            <SpeechBubbleIcon className="w-5 h-5 mr-2" /> {/* Updated Icon */}
+            <SpeechBubbleIcon className="w-5 h-5 mr-2" />
             Assistente IA
           </button>
           <button
-            onClick={() => setCurrentView(AppView.MANAGE_FAQS)}
-            className={`${navButtonClasses} ${currentView === AppView.MANAGE_FAQS ? activeClasses : inactiveClasses}`}
-            aria-label="Criar Novo FAQ" // Updated aria-label
+            onClick={() => navigate('/manage-faq/new')} // <--- Usa navigate para nova rota de criação
+            className={baseButtonClasses}
+            aria-label="Criar Novo FAQ"
           >
-            <PlusCircleIcon className="w-5 h-5 mr-2" /> {/* Updated Icon */}
-            Criar FAQ {/* Updated Text */}
+            <PlusCircleIcon className="w-5 h-5 mr-2" />
+            Criar FAQ
           </button>
         </nav>
       </div>

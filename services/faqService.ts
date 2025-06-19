@@ -7,7 +7,7 @@ const API_BASE_URL = '/api/faqs';
 const faqService = {
   loadFAQs: async (): Promise<FAQ[]> => {
     try {
-      const response = await fetch(API_BASE_URL); // <-- Certifique-se que usa API_BASE_URL
+      const response = await fetch(API_BASE_URL);
       if (!response.ok) {
         throw new Error(`Erro HTTP ao carregar FAQs: ${response.status}`);
       }
@@ -21,7 +21,7 @@ const faqService = {
 
   saveFAQs: async (newFaqData: Omit<FAQ, 'id'>): Promise<FAQ> => {
     try {
-      const response = await fetch(API_BASE_URL, { // <-- Certifique-se que usa API_BASE_URL
+      const response = await fetch(API_BASE_URL, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -41,27 +41,6 @@ const faqService = {
     }
   },
 
-  // updateFAQ: async (updatedFaq: FAQ): Promise<FAQ> => {
-  //   try {
-  //     const response = await fetch(`<span class="math-inline">\{API\_BASE\_URL\}/</span>{updatedFaq.id}`, { // Inclui o ID na URL
-  //       method: 'PUT',
-  //       headers: {
-  //         'Content-Type': 'application/json',
-  //       },
-  //       body: JSON.stringify(updatedFaq),
-  //     });
-  //     if (!response.ok) {
-  //       const errorBody = await response.json();
-  //       throw new Error(`Erro HTTP ao atualizar FAQ: ${response.status} - ${errorBody.message || response.statusText}`);
-  //     }
-  //     const faq: FAQ = await response.json();
-  //     console.log("FAQ atualizado no servidor com sucesso!", faq);
-  //     return faq;
-  //   } catch (error) {
-  //     console.error("Erro ao atualizar FAQ no servidor:", error);
-  //     throw error;
-  //   }
-  // },
   updateFAQ: async (updatedFaq: FAQ): Promise<FAQ> => {
     try {
       // Corrigido: Use backticks (crases) e a sintaxe correta para interpolação ${}.
@@ -85,26 +64,7 @@ const faqService = {
     }
   },
 
-  // NOVO: Função para excluir FAQs por categoria
-  deleteFAQsByCategory: async (categoryName: string): Promise<string> => {
-    try {
-      const response = await fetch(`${API_BASE_URL}/category/${encodeURIComponent(categoryName)}`, {
-        method: 'DELETE',
-      });
-      if (!response.ok) {
-        const errorBody = await response.json();
-        throw new Error(`Erro HTTP ao excluir FAQs da categoria '${categoryName}': ${response.status} - ${errorBody.message || response.statusText}`);
-      }
-      const successMessage = await response.json(); // O backend retorna um JSON com a mensagem de sucesso
-      console.log("FAQs da categoria excluídos com sucesso!", successMessage.message);
-      return successMessage.message;
-    } catch (error) {
-      console.error(`Erro ao excluir FAQs da categoria '${categoryName}':`, error);
-      throw error;
-    }
-  },
-
-  // NOVO: Função para excluir um FAQ por ID - COLOQUE AQUI
+  // Função para excluir um FAQ por ID
   deleteFAQ: async (id: string): Promise<void> => {
     try {
       const response = await fetch(`${API_BASE_URL}/${id}`, {
@@ -124,6 +84,24 @@ const faqService = {
       console.log(`FAQ com ID ${id} excluído no servidor com sucesso!`);
     } catch (error) {
       console.error(`Erro ao excluir FAQ com ID ${id} do servidor:`, error);
+      throw error;
+    }
+  },
+
+  deleteFAQsByCategory: async (categoryName: string): Promise<string> => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/category/${encodeURIComponent(categoryName)}`, {
+        method: 'DELETE',
+      });
+      if (!response.ok) {
+        const errorBody = await response.json();
+        throw new Error(`Erro HTTP ao excluir FAQs da categoria '${categoryName}': ${response.status} - ${errorBody.message || response.statusText}`);
+      }
+      const successMessage = await response.json();
+      console.log("FAQs da categoria excluídos com sucesso!", successMessage.message);
+      return successMessage.message;
+    } catch (error) {
+      console.error(`Erro ao excluir FAQs da categoria '${categoryName}':`, error);
       throw error;
     }
   },
