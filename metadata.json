@@ -1,0 +1,6 @@
+{
+  "name": "Assistente de TI IA & FAQ",
+  "description": "Um aplicativo de FAQ e assistente de IA para ajudar a resolver problemas comuns de TI. Consulte FAQs baseados em um conjunto de problemas e soluções ou pergunte ao nosso assistente de IA para obter ajuda personalizada.",
+  "requestFramePermissions": [],
+  "prompt": ""
+}

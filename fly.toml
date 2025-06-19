@@ -1,0 +1,28 @@
+# fly.toml app configuration file generated for seu-assistente-de-ti-ia-e-faq on 2025-06-14T01:17:57-03:00
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
+
+app = 'seu-assistente-de-ti-ia-e-faq'
+primary_region = 'gru'
+
+[build]
+  dockerfile = './Dockerfile'
+  args = { GEMINI_API_KEY = "AIzaSyCEACod6TXW3YEuqlcleKjKrqy2_6llqok" }
+
+[[mounts]]
+  source = 'faq_data'
+  destination = '/app/data'
+
+[http_service]
+  internal_port = 3001
+  force_https = true
+  auto_stop_machines = 'stop'
+  auto_start_machines = true
+  min_machines_running = 1
+  processes = ['app']
+
+[[vm]]
+  memory = '1gb'
+  cpu_kind = 'shared'
+  cpus = 1
