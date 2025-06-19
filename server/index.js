@@ -4,6 +4,7 @@ const path = require('path');
 const cors = require('cors');
 const { v4: uuidv4 } = require('uuid');
 const { GoogleGenAI } = require('@google/genai');
+const multer = require('multer');
 
 // Comente essa linha em: DESENVOLVIMENTO
 // const { GEMINI_MODEL_NAME, AI_SYSTEM_INSTRUCTION } = require('./constants');
@@ -28,12 +29,42 @@ const PORT = process.env.PORT || 3001;
 const FAQS_FILE = path.join('/app/data', 'faqs.json');
 const frontendBuildPath = path.join(__dirname, '..', 'public');
 
+// NOVO: Diretório para uploads de imagens e documentos
+const UPLOADS_DIR = path.join('/app/uploads'); // No container Fly.io, mapeie isso para um volume persistente
+const UPLOADS_SERVE_PATH = '/uploads'; // Caminho que será acessível pelo navegador
+
+// Configuração do Multer para armazenamento
+const storage = multer.diskStorage({
+  destination: async (req, file, cb) => {
+    // Garante que o diretório de uploads exista
+    await fs.mkdir(UPLOADS_DIR, { recursive: true }).catch(console.error);
+    cb(null, UPLOADS_DIR);
+  },
+  filename: (req, file, cb) => {
+    // Gera um nome de arquivo único para evitar colisões
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    const fileExtension = path.extname(file.originalname);
+    cb(null, file.fieldname + '-' + uniqueSuffix + fileExtension);
+  }
+});
+const upload = multer({ storage: storage });
+
 // Middlewares
 app.use(cors());
 app.use(express.json());
 
 // Servir arquivos estáticos do frontend
 app.use(express.static(frontendBuildPath));
+
+// NOVO: Rota para upload de imagens
+app.post('/api/upload-image', upload.single('image'), (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({ message: 'Nenhum arquivo enviado.' });
+  }
+  // Retorna a URL pública da imagem
+  const imageUrl = `${UPLOADS_SERVE_PATH}/${req.file.filename}`;
+  res.status(200).json({ imageUrl: imageUrl });
+});
 
 // Função para carregar FAQs do arquivo
 const loadFaqs = async () => {
@@ -287,4 +318,5 @@ app.get('*', (req, res) => {
 
 app.listen(PORT, () => {
   console.log(`Servidor FAQ rodando na porta ${PORT}`);
+  console.log(`Diretório de uploads: ${UPLOADS_DIR}`);
 });
