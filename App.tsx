@@ -67,10 +67,10 @@ const App: React.FC = () => {
   }, []);
 
   // ÚNICA DECLARAÇÃO: Lida com todas as ações de FAQ (usada por AIAssistantSection e FAQSection)
-  // ÚNICA DECLARAÇÃO: Lida com todas as ações de FAQ (usada por AIAssistantSection e FAQSection)
   const handleFaqAction = useCallback(async (
     action: 'add' | 'update' | 'delete' | 'deleteCategory' | 'renameCategory',
-    faqData: Omit<FAQType, 'id'> & { id?: string; categoryName?: string; oldCategoryName?: string; newCategoryName?: string; reason?: string }
+    // ATUALIZADO: faqData agora PODE INCLUIR 'answer' para a ação de 'delete'.
+    faqData: Omit<FAQType, 'id'> & { id?: string; categoryName?: string; oldCategoryName?: string; newCategoryName?: string; reason?: string; answer?: string }
   ) => {
     try {
       let result: FAQType | string | null = null;
@@ -80,14 +80,22 @@ const App: React.FC = () => {
         setFaqs((prevFaqs) => [result as FAQType, ...prevFaqs]);
       } else if (action === 'update') {
         if (!faqData.id) throw new Error("ID do FAQ é obrigatório para atualização.");
+
+        // NOVO (Opcional, mas recomendado para updates): Lógica para remover imagens antigas se um FAQ for atualizado e as imagens forem removidas do texto
+        // Isso seria mais complexo: exigiria buscar o FAQ antigo, extrair URLs, comparar com as novas URLs.
+        // Por simplicidade, este exemplo foca a remoção de imagens APENAS na exclusão completa do FAQ.
+
         result = await faqService.updateFAQ(faqData as FAQType);
         setFaqs((prevFaqs) => prevFaqs.map(f => (f.id === (result as FAQType).id ? (result as FAQType) : f)));
       } else if (action === 'delete') {
         if (!faqData.id) throw new Error("ID do FAQ é obrigatório para exclusão.");
-        // NOVO: Lógica para remover imagens associadas antes de excluir o FAQ
-        const faqToDelete = faqs.find(f => f.id === faqData.id); // Encontra a FAQ no estado atual
-        if (faqToDelete && faqToDelete.answer) {
-          const imageUrls = extractImageUrlsFromMarkdown(faqToDelete.answer);
+
+        // ATUALIZADO: Acessar a resposta da FAQ diretamente de faqData.answer se foi passada.
+        // Caso contrário (fallback), tenta encontrar no estado 'faqs'.
+        const faqAnswerForImageDeletion = faqData.answer || faqs.find(f => f.id === faqData.id)?.answer;
+
+        if (faqAnswerForImageDeletion) { // Verifica se há conteúdo de resposta para extrair imagens
+          const imageUrls = extractImageUrlsFromMarkdown(faqAnswerForImageDeletion);
           for (const imageUrl of imageUrls) {
             const filename = getFilenameFromImageUrl(imageUrl);
             if (filename) {
@@ -97,24 +105,26 @@ const App: React.FC = () => {
                   method: 'DELETE',
                 });
                 if (!response.ok) {
-                  // Se a resposta não for OK, logar um aviso mas não parar o processo
                   const errorText = await response.text();
                   console.warn(`Aviso: Falha ao remover imagem ${filename} do servidor (Status: ${response.status}). Detalhes: ${errorText}`);
                 } else {
                   console.log(`Imagem ${filename} associada ao FAQ ${faqData.id} removida do servidor.`);
                 }
               } catch (imageDeleteError) {
-                // Captura erros de rede ou outros erros na chamada fetch
                 console.warn(`Aviso: Erro inesperado ao tentar remover imagem ${filename}:`, imageDeleteError);
               }
             }
           }
+        } else {
+          console.warn(`Aviso: Resposta da FAQ (${faqData.id}) não disponível para extração de imagem. Imagens não serão removidas.`);
         }
-        await faqService.deleteFAQ(faqData.id); // Exclui o FAQ em si
+
+        await faqService.deleteFAQ(faqData.id); // Exclui o registro do FAQ
         setFaqs((prevFaqs) => prevFaqs.filter(f => f.id !== faqData.id));
         result = "FAQ excluído com sucesso!";
       } else if (action === 'deleteCategory') {
         if (!faqData.categoryName) throw new Error("Nome da categoria é obrigatório para exclusão por categoria.");
+        // Lógica mais complexa para deletar imagens aqui (iterar FAQs da categoria)
         result = await faqService.deleteFAQsByCategory(faqData.categoryName);
         setFaqs((prevFaqs) => prevFaqs.filter(f => f.category.toLowerCase() !== faqData.categoryName!.toLowerCase()));
       } else if (action === 'renameCategory') {
@@ -133,32 +143,38 @@ const App: React.FC = () => {
       console.error(`Erro ao ${action} FAQ no App:`, error);
       throw error;
     }
-  }, []);
-
+  }, [faqs]); // Dependência em 'faqs' para o 'find' fallback
 
   // Funções específicas para passar ao FAQSection
   const handleEditFAQClick = useCallback(async (updatedFaq: FAQType) => {
     try {
-      // Chama a função centralizada handleFaqAction com a ação 'update'
-      // e os dados completos da FAQ atualizada.
       await handleFaqAction('update', updatedFaq);
       console.log(`FAQ ${updatedFaq.id} atualizado com sucesso.`);
     } catch (error) {
       console.error(`Falha ao atualizar FAQ ${updatedFaq.id}:`, error);
-      // Opcional: Mostrar um alerta de erro para o usuário
       alert(`Falha ao atualizar FAQ: ${error instanceof Error ? error.message : "Erro desconhecido."}`);
     }
   }, [handleFaqAction]);
 
+  // ATUALIZADO: handleDeleteFAQClick para passar a resposta diretamente para handleFaqAction
   const handleDeleteFAQClick = useCallback(async (id: string) => {
     try {
-      await handleFaqAction('delete', { id });
-      console.log(`FAQ ${id} excluído com sucesso.`);
+      // Encontra a FAQ completa NO MOMENTO DA CLICADA para garantir que a `answer` não esteja stale
+      const faqToDeleteCompletely = faqs.find(f => f.id === id);
+      if (faqToDeleteCompletely) {
+        // Passa o ID E a resposta completa para handleFaqAction
+        await handleFaqAction('delete', { id, answer: faqToDeleteCompletely.answer });
+        console.log(`FAQ ${id} excluído com sucesso.`);
+      } else {
+        // Fallback: Se a FAQ não for encontrada no estado (o que não deveria acontecer se ela foi exibida na UI)
+        console.warn(`FAQ com ID ${id} não encontrado no estado para exclusão completa. Tentando excluir apenas o registro.`);
+        await handleFaqAction('delete', { id }); // Ainda tenta excluir o registro do FAQ
+      }
     } catch (error) {
       console.error(`Falha ao excluir FAQ ${id}:`, error);
       alert(`Falha ao excluir FAQ: ${error instanceof Error ? error.message : "Erro desconhecido."}`);
     }
-  }, [handleFaqAction]);
+  }, [faqs, handleFaqAction]); // Dependências: 'faqs' para o find, 'handleFaqAction' para a chamada
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -173,7 +189,7 @@ const App: React.FC = () => {
                 faqs={faqs}
                 onEditFAQ={handleEditFAQClick}
                 onDeleteFAQ={handleDeleteFAQClick}
-              // onAddFAQ={addFAQ}
+              // onAddFAQ={addFAQ} // Removido anteriormente, está correto
               />
             )}
             {currentView === AppView.AI_ASSISTANT && (
