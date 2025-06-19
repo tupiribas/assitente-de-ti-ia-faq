@@ -1,5 +1,3 @@
-// assistente-de-ti/App.tsx
-
 import React, { useState, useEffect, useCallback } from 'react';
 import Header from './components/Header';
 import FAQSection from './components/FAQSection';
@@ -8,6 +6,32 @@ import ManageFAQsSection from './components/ManageFAQsSection';
 import Footer from './components/Footer';
 import { AppView, FAQ as FAQType } from './types';
 import { faqService } from './services/faqService';
+
+// NOVO: Função auxiliar para extrair URLs de imagem de texto Markdown
+const extractImageUrlsFromMarkdown = (markdownText: string): string[] => {
+  const imageUrls: string[] = [];
+  // Regex para encontrar sintaxe de imagem Markdown: ![alt text](url)
+  const regex = /!\[.*?\]\((.*?)\)/g;
+  let match;
+  while ((match = regex.exec(markdownText)) !== null) {
+    if (match[1]) {
+      imageUrls.push(match[1]);
+    }
+  }
+  return imageUrls;
+};
+
+// NOVO: Função para obter o filename a partir da URL (ex: /uploads/image-123.png -> image-123.png)
+const getFilenameFromImageUrl = (imageUrl: string): string | null => {
+  // Assume que a URL é algo como /uploads/nome-do-arquivo.extensao
+  const parts = imageUrl.split('/');
+  const filename = parts[parts.length - 1]; // Pega a última parte
+  // Opcional: Validação básica da extensão para garantir que é um arquivo de imagem
+  if (filename && filename.match(/\.(png|jpg|jpeg|gif|webp|svg)$/i)) {
+    return filename;
+  }
+  return null;
+};
 
 const App: React.FC = () => {
   const [currentView, setCurrentView] = useState<AppView>(AppView.FAQ);
@@ -43,9 +67,10 @@ const App: React.FC = () => {
   }, []);
 
   // ÚNICA DECLARAÇÃO: Lida com todas as ações de FAQ (usada por AIAssistantSection e FAQSection)
+  // ÚNICA DECLARAÇÃO: Lida com todas as ações de FAQ (usada por AIAssistantSection e FAQSection)
   const handleFaqAction = useCallback(async (
-    action: 'add' | 'update' | 'delete' | 'deleteCategory' | 'renameCategory', // Adiciona 'renameCategory'
-    faqData: Omit<FAQType, 'id'> & { id?: string; categoryName?: string; oldCategoryName?: string; newCategoryName?: string; reason?: string } // Adiciona oldCategoryName, newCategoryName
+    action: 'add' | 'update' | 'delete' | 'deleteCategory' | 'renameCategory',
+    faqData: Omit<FAQType, 'id'> & { id?: string; categoryName?: string; oldCategoryName?: string; newCategoryName?: string; reason?: string }
   ) => {
     try {
       let result: FAQType | string | null = null;
@@ -59,19 +84,44 @@ const App: React.FC = () => {
         setFaqs((prevFaqs) => prevFaqs.map(f => (f.id === (result as FAQType).id ? (result as FAQType) : f)));
       } else if (action === 'delete') {
         if (!faqData.id) throw new Error("ID do FAQ é obrigatório para exclusão.");
-        await faqService.deleteFAQ(faqData.id);
+        // NOVO: Lógica para remover imagens associadas antes de excluir o FAQ
+        const faqToDelete = faqs.find(f => f.id === faqData.id); // Encontra a FAQ no estado atual
+        if (faqToDelete && faqToDelete.answer) {
+          const imageUrls = extractImageUrlsFromMarkdown(faqToDelete.answer);
+          for (const imageUrl of imageUrls) {
+            const filename = getFilenameFromImageUrl(imageUrl);
+            if (filename) {
+              try {
+                // Chama o novo endpoint DELETE /api/uploads/:filename
+                const response = await fetch(`/api/uploads/${filename}`, {
+                  method: 'DELETE',
+                });
+                if (!response.ok) {
+                  // Se a resposta não for OK, logar um aviso mas não parar o processo
+                  const errorText = await response.text();
+                  console.warn(`Aviso: Falha ao remover imagem ${filename} do servidor (Status: ${response.status}). Detalhes: ${errorText}`);
+                } else {
+                  console.log(`Imagem ${filename} associada ao FAQ ${faqData.id} removida do servidor.`);
+                }
+              } catch (imageDeleteError) {
+                // Captura erros de rede ou outros erros na chamada fetch
+                console.warn(`Aviso: Erro inesperado ao tentar remover imagem ${filename}:`, imageDeleteError);
+              }
+            }
+          }
+        }
+        await faqService.deleteFAQ(faqData.id); // Exclui o FAQ em si
         setFaqs((prevFaqs) => prevFaqs.filter(f => f.id !== faqData.id));
         result = "FAQ excluído com sucesso!";
       } else if (action === 'deleteCategory') {
         if (!faqData.categoryName) throw new Error("Nome da categoria é obrigatório para exclusão por categoria.");
         result = await faqService.deleteFAQsByCategory(faqData.categoryName);
         setFaqs((prevFaqs) => prevFaqs.filter(f => f.category.toLowerCase() !== faqData.categoryName!.toLowerCase()));
-      } else if (action === 'renameCategory') { // NOVO: Lógica para renomear categoria
+      } else if (action === 'renameCategory') {
         if (!faqData.oldCategoryName || !faqData.newCategoryName) {
           throw new Error("Nomes da categoria antiga e nova são obrigatórios para renomear.");
         }
         result = await faqService.renameCategory(faqData.oldCategoryName, faqData.newCategoryName);
-        // Atualiza o estado dos FAQs localmente após a renomeação da categoria
         setFaqs((prevFaqs) => prevFaqs.map(f =>
           f.category.toLowerCase() === faqData.oldCategoryName!.toLowerCase()
             ? { ...f, category: faqData.newCategoryName! }

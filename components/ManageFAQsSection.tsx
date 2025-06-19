@@ -135,7 +135,7 @@ const ManageFAQsSection: React.FC<ManageFAQsSectionProps> = ({ onAddFAQ, faqToEd
   const formTitle = faqToEdit ? `Editar FAQ (ID: ${faqToEdit.id})` : 'Adicionar Novo FAQ';
 
   return (
-    <div className="bg-white p-6 sm:p-8 rounded-lg shadow-xl max-w-2xl mx-auto">
+    <div className="bg-white p-4 sm:p-8 rounded-lg shadow-xl max-w-2xl mx-auto">
       <h2 className="text-3xl font-bold text-slate-800 mb-6 text-center">{formTitle}</h2>
 
       <form onSubmit={handleSubmit} className="space-y-6">
@@ -170,9 +170,8 @@ const ManageFAQsSection: React.FC<ManageFAQsSectionProps> = ({ onAddFAQ, faqToEd
             disabled={isSubmitting || uploadingImage}
           />
         </div>
-
         {/* NOVO: Seção de Upload de Imagem */}
-        <div className="border-t border-slate-200 pt-6 mt-6 space-y-4">
+        <div className="pt-0 mt-0 space-y-4">
           <h3 className="text-lg font-semibold text-slate-800">Anexar Imagem</h3>
           <input
             type="file"
@@ -234,12 +233,14 @@ const ManageFAQsSection: React.FC<ManageFAQsSectionProps> = ({ onAddFAQ, faqToEd
           </p>
         )}
 
-        <div className="flex space-x-3">
+        <div className="flex flex-col space-y-3 sm:flex-row sm:space-x-3 sm:space-y-0">
           {faqToEdit && onCancel && (
             <button
               type="button"
               onClick={onCancel}
-              className="flex-grow bg-slate-400 text-white font-semibold py-3 px-4 rounded-lg hover:bg-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-500 focus:ring-offset-2 transition-colors duration-150 ease-in-out disabled:opacity-50 disabled:cursor-not-allowed"
+              // w-full: ocupa 100% da largura em telas pequenas
+              // sm:w-auto: largura automática (baseada no conteúdo) em telas 'sm' e maiores
+              className="w-full sm:w-auto bg-slate-400 text-white font-semibold py-3 px-4 rounded-lg hover:bg-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-500 focus:ring-offset-2 transition-colors duration-150 ease-in-out disabled:opacity-50 disabled:cursor-not-allowed"
               disabled={isSubmitting || uploadingImage}
             >
               Cancelar
@@ -247,7 +248,9 @@ const ManageFAQsSection: React.FC<ManageFAQsSectionProps> = ({ onAddFAQ, faqToEd
           )}
           <button
             type="submit"
-            className="flex-grow bg-blue-600 text-white font-semibold py-3 px-4 rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors duration-150 ease-in-out disabled:opacity-50 disabled:cursor-not-allowed"
+            // w-full: ocupa 100% da largura em telas pequenas
+            // sm:w-auto: largura automática (baseada no conteúdo) em telas 'sm' e maiores
+            className="w-full sm:w-auto bg-blue-600 text-white font-semibold py-3 px-4 rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors duration-150 ease-in-out disabled:opacity-50 disabled:cursor-not-allowed"
             disabled={isSubmitting || uploadingImage}
           >
             {isSubmitting ? (faqToEdit ? 'Salvando...' : 'Adicionando...') : (faqToEdit ? 'Salvar Edição' : 'Adicionar FAQ')}

@@ -6,12 +6,9 @@ const { v4: uuidv4 } = require('uuid');
 const { GoogleGenAI } = require('@google/genai');
 const multer = require('multer');
 
-// Comente essa linha em: DESENVOLVIMENTO
-// const { GEMINI_MODEL_NAME, AI_SYSTEM_INSTRUCTION } = require('./constants');
-
-// Comente essa linha em: PRODUÇÃO
-const { GEMINI_MODEL_NAME, AI_SYSTEM_INSTRUCTION } = require('./build/constants'); // Caminho corrigido
-
+// Importar do diretório de build após compilação.
+// Este caminho é consistente para desenvolvimento e produção.
+const { GEMINI_MODEL_NAME, AI_SYSTEM_INSTRUCTION } = require('./build/constants');
 
 // Certifique-se de que a API_KEY está disponível como uma variável de ambiente no servidor Fly.io
 const GEMINI_API_KEY_SERVER = process.env.GEMINI_API_KEY;
@@ -19,29 +16,25 @@ const GEMINI_API_KEY_SERVER = process.env.GEMINI_API_KEY;
 // Inicializa o cliente GoogleGenAI globalmente (isso está correto)
 const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY_SERVER });
 
-// A sessão de chat não é mais inicializada globalmente aqui.
-// Ela será inicializada dentro da rota /api/ai-chat para cada requisição.
-
-
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-const FAQS_FILE = path.join('/app/data', 'faqs.json');
+const FAQS_FILE = path.join('/app/data', 'faqs.json'); // FAQ File está no volume persistente
 const frontendBuildPath = path.join(__dirname, '..', 'public');
 
-// NOVO: Diretório para uploads de imagens e documentos
-const UPLOADS_DIR = path.join('/app/uploads'); // No container Fly.io, mapeie isso para um volume persistente
-const UPLOADS_SERVE_PATH = '/uploads'; // Caminho que será acessível pelo navegador
+// CORRIGIDO: Diretório para uploads de imagens e documentos.
+// AGORA DENTRO DO VOLUME PERSISTENTE '/app/data' para garantir que as imagens não sejam perdidas.
+const UPLOADS_DIR = path.join('/app/data', 'uploads');
+const UPLOADS_SERVE_PATH = '/uploads'; // Caminho público para acessar as imagens
 
 // Configuração do Multer para armazenamento
 const storage = multer.diskStorage({
   destination: async (req, file, cb) => {
-    // Garante que o diretório de uploads exista
+    // Garante que o diretório de uploads exista no volume persistente
     await fs.mkdir(UPLOADS_DIR, { recursive: true }).catch(console.error);
     cb(null, UPLOADS_DIR);
   },
   filename: (req, file, cb) => {
-    // Gera um nome de arquivo único para evitar colisões
     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
     const fileExtension = path.extname(file.originalname);
     cb(null, file.fieldname + '-' + uniqueSuffix + fileExtension);
@@ -53,17 +46,42 @@ const upload = multer({ storage: storage });
 app.use(cors());
 app.use(express.json());
 
-// Servir arquivos estáticos do frontend
+// CORRIGIDO: Servir arquivos estáticos do diretório de uploads ANTES das rotas.
+// Isso garante que as imagens carregadas sejam acessíveis via URL /uploads/...
+app.use(UPLOADS_SERVE_PATH, express.static(UPLOADS_DIR));
+
+// Servir arquivos estáticos do frontend (geralmente vai para ./public)
 app.use(express.static(frontendBuildPath));
 
-// NOVO: Rota para upload de imagens
+
+// NOVO: Rota para upload de imagens (coloquei ela mais acima para agrupar as rotas de imagem)
 app.post('/api/upload-image', upload.single('image'), (req, res) => {
   if (!req.file) {
     return res.status(400).json({ message: 'Nenhum arquivo enviado.' });
   }
-  // Retorna a URL pública da imagem
+  // Retorna a URL pública da imagem. O caminho público é UPLOADS_SERVE_PATH.
   const imageUrl = `${UPLOADS_SERVE_PATH}/${req.file.filename}`;
   res.status(200).json({ imageUrl: imageUrl });
+});
+
+// NOVO: Rota DELETE para remover uma imagem pelo nome do arquivo
+app.delete('/api/uploads/:filename', async (req, res) => {
+  const { filename } = req.params;
+  // O UPLOADS_DIR já aponta para /app/data/uploads, garantindo que o arquivo seja acessado no volume persistente
+  const filePath = path.join(UPLOADS_DIR, filename);
+
+  try {
+    await fs.access(filePath); // Verifica se o arquivo existe
+    await fs.unlink(filePath); // Remove o arquivo
+    console.log(`Arquivo ${filename} removido do servidor.`);
+    res.status(200).json({ message: `Arquivo ${filename} removido com sucesso.` });
+  } catch (error) {
+    if (error.code === 'ENOENT') { // Se o arquivo não existe, já está "removido"
+      return res.status(404).json({ message: `Arquivo ${filename} não encontrado.` });
+    }
+    console.error(`Erro ao remover arquivo ${filename}:`, error);
+    res.status(500).json({ message: `Erro ao remover arquivo ${filename}: ${error.message}` });
+  }
 });
 
 // Função para carregar FAQs do arquivo
