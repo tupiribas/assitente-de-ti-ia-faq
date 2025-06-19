@@ -87,10 +87,18 @@ const App: React.FC = () => {
 
 
   // Funções específicas para passar ao FAQSection
-  const handleEditFAQClick = useCallback((faq: FAQType) => {
-    // Isso vai ser tratado dentro do FAQSection, que abre o modal de edição
-    console.log("Iniciando edição de FAQ:", faq.id);
-  }, []);
+  const handleEditFAQClick = useCallback(async (updatedFaq: FAQType) => {
+    try {
+      // Chama a função centralizada handleFaqAction com a ação 'update'
+      // e os dados completos da FAQ atualizada.
+      await handleFaqAction('update', updatedFaq);
+      console.log(`FAQ ${updatedFaq.id} atualizado com sucesso.`);
+    } catch (error) {
+      console.error(`Falha ao atualizar FAQ ${updatedFaq.id}:`, error);
+      // Opcional: Mostrar um alerta de erro para o usuário
+      alert(`Falha ao atualizar FAQ: ${error instanceof Error ? error.message : "Erro desconhecido."}`);
+    }
+  }, [handleFaqAction]);
 
   const handleDeleteFAQClick = useCallback(async (id: string) => {
     try {
@@ -101,7 +109,6 @@ const App: React.FC = () => {
       alert(`Falha ao excluir FAQ: ${error instanceof Error ? error.message : "Erro desconhecido."}`);
     }
   }, [handleFaqAction]);
-
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -116,7 +123,7 @@ const App: React.FC = () => {
                 faqs={faqs}
                 onEditFAQ={handleEditFAQClick}
                 onDeleteFAQ={handleDeleteFAQClick}
-                onAddFAQ={addFAQ}
+              // onAddFAQ={addFAQ}
               />
             )}
             {currentView === AppView.AI_ASSISTANT && (

@@ -1,3 +1,4 @@
+"use strict";
 // // import { FAQ } from './types'; //
 // export const PREDEFINED_FAQS = [
 //   {
@@ -31,11 +32,11 @@
 //     answer: '1. Mantenha seu sistema operacional e todos os softwares atualizados.\n2. Use um software antivírus confiável e mantenha-o atualizado.\n3. Não abra anexos de email ou clique em links de remetentes desconhecidos ou suspeitos.\n4. Faça downloads apenas de fontes confiáveis.\n5. Use senhas fortes e diferentes para suas contas online.\n6. Considere usar um gerenciador de senhas e autenticação de dois fatores (2FA).',
 //   },
 // ];
-
-export const GEMINI_MODEL_NAME = 'gemini-2.5-flash-preview-04-17'; //
-
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.AI_SYSTEM_INSTRUCTION = exports.GEMINI_MODEL_NAME = void 0;
+exports.GEMINI_MODEL_NAME = 'gemini-2.5-flash-preview-04-17'; //
 // ALTERAÇÃO AQUI: Atualize a constante AI_SYSTEM_INSTRUCTION
-export const AI_SYSTEM_INSTRUCTION = `Você é um assistente de suporte de TI virtual chamado "TI-Helper", especializado em ajudar usuários com problemas comuns de tecnologia. Suas respostas devem ser claras, concisas, amigáveis e em formato de passo-a-passo sempre que possível. Use linguagem simples, evitando jargões técnicos excessivos.
+exports.AI_SYSTEM_INSTRUCTION = `Você é um assistente de suporte de TI virtual chamado "TI-Helper", especializado em ajudar usuários com problemas comuns de tecnologia. Suas respostas devem ser claras, concisas, amigáveis e em formato de passo-a-passo sempre que possível. Use linguagem simples, evitando jargões técnicos excessivos.
 
 IMPORTANTE: Se a pergunta do usuário for precedida por "Contexto da nossa base de conhecimento:", VOCÊ DEVE PRIORIZAR as informações fornecidas nesse contexto para formular sua resposta. Essas informações são de nossa base de dados interna e são consideradas relevantes para a consulta do usuário. Use este contexto para enriquecer sua resposta. Se o contexto não for suficiente, use seu conhecimento geral.
 

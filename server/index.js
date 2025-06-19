@@ -1,12 +1,15 @@
-// server/index.js
-
 const express = require('express');
 const fs = require('fs').promises;
 const path = require('path');
 const cors = require('cors');
 const { v4: uuidv4 } = require('uuid');
 const { GoogleGenAI } = require('@google/genai');
-const { GEMINI_MODEL_NAME, AI_SYSTEM_INSTRUCTION } = require('./constants'); // Caminho corrigido
+
+// Comente essa linha em: DESENVOLVIMENTO
+// const { GEMINI_MODEL_NAME, AI_SYSTEM_INSTRUCTION } = require('./constants');
+
+// Comente essa linha em: PRODUÇÃO
+const { GEMINI_MODEL_NAME, AI_SYSTEM_INSTRUCTION } = require('./build/constants'); // Caminho corrigido
 
 
 // Certifique-se de que a API_KEY está disponível como uma variável de ambiente no servidor Fly.io

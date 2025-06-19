@@ -4,7 +4,8 @@
   "description": "Backend para gerenciar FAQs",
   "main": "index.js",
   "scripts": {
-    "start": "node index.js"
+    "build:constants": "tsc ../constants.ts --outDir ./build --module commonjs --target ES2020",
+    "start": "npm run build:constants && node index.js"
   },
   "dependencies": {
     "@google/genai": "^1.5.1",
