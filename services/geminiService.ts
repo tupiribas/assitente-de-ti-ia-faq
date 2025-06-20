@@ -1,4 +1,4 @@
-// tupiribas/assitente-de-ti-ia-faq/assitente-de-ti-ia-faq-961e277ace2e20ad889416564a8b8ff5a859f0fc/services/geminiService.ts
+// tupiribas/assitente-de-ti-ia-faq/assitente-de-ti-ia-faq-main/services/geminiService.ts
 
 // Removidas as importações do SDK Gemini, pois agora este serviço se comunica com o backend proxy
 // import { GoogleGenAI, Chat, GenerateContentResponse, GenerativeContentPart } from "@google/genai";
@@ -16,13 +16,15 @@ const geminiService = {
   sendMessageToChat: async (
     message: string,
     imageFile: File | null,
-    history: any[] // O histórico é passado do frontend
+    history: any[], // O histórico é passado do frontend
+    relevantFAQsContext: string // NOVO: Adicionado o contexto dos FAQs
   ): Promise<string> => {
     try {
       const formData = new FormData();
       formData.append('message', message);
       // Passa o histórico como uma string JSON para que o backend possa parsear
       formData.append('history', JSON.stringify(history));
+      formData.append('relevantFAQsContext', relevantFAQsContext); // NOVO: Adiciona o contexto
 
       if (imageFile) {
         formData.append('image', imageFile); // 'image' deve corresponder ao campo esperado no Multer do backend

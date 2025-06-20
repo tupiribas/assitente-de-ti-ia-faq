@@ -41,10 +41,22 @@ const findRelevantFAQs = (query: string, faqsList: FAQType[], topN: number = 2):
     const answerLower = faq.answer.toLowerCase();
     const categoryLower = faq.category.toLowerCase();
 
+    // Adiciona o texto alt da imagem ao conteúdo a ser pesquisado
+    const imageUrlRegex = /!\[(.*?)\]\((.*?)\)/g;
+    let imageMatch;
+    let imageAltTexts = [];
+    while ((imageMatch = imageUrlRegex.exec(faq.answer)) !== null) {
+      if (imageMatch[1]) {
+        imageAltTexts.push(imageMatch[1].toLowerCase()); // Captura o texto alt
+      }
+    }
+
     queryLower.forEach(word => {
       if (questionLower.includes(word)) score += 2;
       if (answerLower.includes(word)) score += 1;
       if (categoryLower.includes(word)) score += 0.5;
+      // Novo: Aumenta a pontuação se a palavra-chave estiver no texto alt da imagem
+      if (imageAltTexts.some(altText => altText.includes(word))) score += 1.5;
     });
     return { faq, score };
   });
@@ -52,7 +64,8 @@ const findRelevantFAQs = (query: string, faqsList: FAQType[], topN: number = 2):
   return scoredFAQs
     .filter(item => item.score > 0)
     .sort((a, b) => b.score - a.score)
-    .map(item => item.faq);
+    .map(item => item.faq)
+    .slice(0, topN); // Garante que apenas os topN sejam retornados
 };
 
 const AIAssistantSection: React.FC<AIAssistantSectionProps> = ({ onFaqAction, faqs }) => {
@@ -155,6 +168,17 @@ const AIAssistantSection: React.FC<AIAssistantSectionProps> = ({ onFaqAction, fa
   const handleSendMessage = async (inputText: string, imageFile?: File | null) => {
     if ((!inputText.trim() && !imageFile) || suggestedFAQProposal) return;
 
+    // NOVO: Gerar o contexto relevante dos FAQs
+    const relevantFAQs = findRelevantFAQs(inputText, faqs);
+    let relevantFAQsContext = '';
+    if (relevantFAQs.length > 0) {
+      relevantFAQsContext = `Contexto da nossa base de conhecimento:\n\n`;
+      relevantFAQs.forEach((faq, index) => {
+        relevantFAQsContext += `### FAQ ${index + 1}: ${faq.question}\n`;
+        relevantFAQsContext += `Resposta: ${faq.answer}\n\n`; // A resposta inclui a sintaxe Markdown da imagem
+      });
+    }
+
     // Constrói o histórico do chat para enviar ao backend
     // Exclui a mensagem de boas-vindas inicial se for a primeira mensagem
     const chatHistoryForBackend = chatMessages
@@ -175,8 +199,8 @@ const AIAssistantSection: React.FC<AIAssistantSectionProps> = ({ onFaqAction, fa
     setFaqProposalMessage(null);
 
     try {
-      // MODIFICADO: Chama o geminiService, passando o texto, o arquivo de imagem e o histórico
-      const aiResponseText = await geminiService.sendMessageToChat(inputText, imageFile || null, chatHistoryForBackend);
+      // MODIFICADO: Chama o geminiService, passando o texto, o arquivo de imagem, o histórico E o contexto dos FAQs
+      const aiResponseText = await geminiService.sendMessageToChat(inputText, imageFile || null, chatHistoryForBackend, relevantFAQsContext);
 
       const proposalHandled = handleFAQProposal(aiResponseText);
 
@@ -198,10 +222,11 @@ const AIAssistantSection: React.FC<AIAssistantSectionProps> = ({ onFaqAction, fa
       setIsLoading(false);
       // Revogar a URL temporária da pré-visualização para liberar memória
       if (userMessage.imagePreviewUrl) {
-          URL.revokeObjectURL(userMessage.imagePreviewUrl);
+        URL.revokeObjectURL(userMessage.imagePreviewUrl);
       }
     }
   };
+
 
   // handleConfirmAddToFAQ (sem alterações)
   const handleConfirmAddToFAQ = async () => {

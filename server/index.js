@@ -294,12 +294,8 @@ app.post('/api/ai-chat', uploadChatImage.single('image'), async (req, res) => {
     // ... verificações de horário e rate limiting ...
 
     try {
-        const { message, history, relevantFAQsContext } = req.body;
+        const { message, history, relevantFAQsContext } = req.body; // 'relevantFAQsContext' já está sendo extraído
         const imageFile = req.file;
-
-        if (!message && !imageFile) {
-            return res.status(400).json({ message: "Mensagem ou imagem é obrigatória." });
-        }
 
         const formattedHistory = history ? JSON.parse(history).map((msg) => ({
             role: msg.sender === 'user' ? 'user' : 'model',
@@ -308,11 +304,18 @@ app.post('/api/ai-chat', uploadChatImage.single('image'), async (req, res) => {
 
         const contentParts = [];
 
-        const textPart = relevantFAQsContext ? relevantFAQsContext + message : message;
-        if (textPart) {
-            contentParts.push({ text: textPart });
+        // MODIFICADO: Adiciona o relevantFAQsContext ANTES da mensagem do usuário
+        // Isso garante que o contexto seja processado primeiro pelo modelo.
+        if (relevantFAQsContext) {
+            contentParts.push({ text: relevantFAQsContext });
         }
 
+        // Adiciona a mensagem do usuário
+        if (message) {
+            contentParts.push({ text: message });
+        }
+
+        // Se houver imagem, adiciona-a como parte 'inlineData'
         if (imageFile) {
             if (!imageFile.buffer || imageFile.buffer.length === 0) {
                 console.error("Erro: Buffer da imagem está vazio ou inválido!");
@@ -320,6 +323,7 @@ app.post('/api/ai-chat', uploadChatImage.single('image'), async (req, res) => {
             }
 
             const imageBase64 = imageFile.buffer.toString('base64');
+
             let normalizedMimeType = imageFile.mimetype;
             if (normalizedMimeType === 'image/jpg') {
                 normalizedMimeType = 'image/jpeg';
@@ -332,12 +336,17 @@ app.post('/api/ai-chat', uploadChatImage.single('image'), async (req, res) => {
                 },
             });
         }
-        
+
         if (contentParts.length === 0) {
             return res.status(400).json({ message: "Conteúdo da requisição de IA vazio." });
         }
 
-        const model = ai.getGenerativeModel({ model: GEMINI_MODEL_NAME });
+        console.log("Server - Final Content Parts for Gemini:", JSON.stringify(contentParts).substring(0, 500) + (JSON.stringify(contentParts).length > 500 ? '...' : ''));
+
+        const model = ai.getGenerativeModel({
+            model: GEMINI_MODEL_NAME,
+            systemInstruction: { parts: [{ text: AI_SYSTEM_INSTRUCTION }] }, // A instrução está aqui!
+        });
 
         const chatSession = model.startChat({
             history: formattedHistory,
@@ -347,7 +356,6 @@ app.post('/api/ai-chat', uploadChatImage.single('image'), async (req, res) => {
                 topP: 1,
                 maxOutputTokens: 2048,
             },
-            // REMOVIDA: systemInstruction: AI_SYSTEM_INSTRUCTION,
         });
 
         const result = await chatSession.sendMessage(contentParts);
