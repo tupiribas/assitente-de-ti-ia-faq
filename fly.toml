@@ -8,7 +8,6 @@ primary_region = 'gru'
 
 [build]
   dockerfile = './Dockerfile'
-  args = { GEMINI_API_KEY = "AIzaSyCEACod6TXW3YEuqlcleKjKrqy2_6llqok" }
 
 [[mounts]]
   source = 'faq_data'

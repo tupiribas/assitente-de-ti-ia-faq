@@ -4,14 +4,19 @@
   "description": "Backend para gerenciar FAQs",
   "main": "index.js",
   "scripts": {
-    "build:constants": "tsc ../constants.ts --outDir ./build --module commonjs --target ES2020",
+    "build:constants": "tsc -p tsconfig.build.json",
     "start": "npm run build:constants && node index.js"
   },
   "dependencies": {
-    "@google/genai": "^1.5.1",
+    "@google/generative-ai": "^0.24.1",
     "cors": "^2.8.5",
+    "dotenv": "^16.5.0",
     "express": "^4.19.2",
     "multer": "^2.0.1",
     "uuid": "^9.0.1"
+  },
+  "devDependencies": {
+    "cross-env": "^7.0.3",
+    "typescript": "^5.8.3"
   }
 }

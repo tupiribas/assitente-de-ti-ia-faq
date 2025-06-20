@@ -1,38 +1,26 @@
-// Carrega variáveis de ambiente do .env.local
-// Esta linha deve ser a primeira para garantir que as variáveis de ambiente sejam carregadas antes de qualquer outra coisa.
-require('dotenv').config({ path: require('path').resolve(__dirname, '..', '.env.local') });
-
 const express = require('express');
 const fs = require('fs').promises; // Usar fs.promises para async/await
 const path = require('path');
 const cors = require('cors');
 const { v4: uuidv4 } = require('uuid');
 // CORRIGIDO: Usar a importação correta para a nova biblioteca @google/generative-ai
-const { GoogleGenerativeAI } = require('@google/generative-ai');
-const multer = require('multer'); // Importa o Multer para lidar com upload de arquivos
+const { GoogleGenerativeAI } = require('@google/generative-ai'); // <--- Apenas esta deve estar ativa
+const multer = require('multer');
 
 // Importar do diretório de build após compilação.
-// CORRIGIDO: Caminho da importação para 'constants'
 const { GEMINI_MODEL_NAME, AI_SYSTEM_INSTRUCTION } = require('./build/constants');
 
-// Certifique-se de que a API_KEY está disponível como uma variável de ambiente no servidor Fly.io
-// Prefira carregar do process.env.GEMINI_API_KEY. Se não estiver definido, use um valor padrão ou lance um erro.
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-
-// VERIFICAÇÃO CRÍTICA da API Key
-if (!GEMINI_API_KEY || GEMINI_API_KEY.length === 0) {
-    console.error("ERRO CRÍTICO: GEMINI_API_KEY não está definida ou está vazia na variável de ambiente.");
-    console.error("Por favor, defina a variável de ambiente GEMINI_API_KEY:");
-    console.error("  - Localmente: Crie um arquivo .env.local na raiz do projeto com GEMINI_API_KEY=\"SUA_CHAVE\"");
-    console.error("  - No Fly.io: Execute flyctl secrets set GEMINI_API_KEY=\"SUA_CHAVE\"");
-    // Não encerre o processo aqui se você quiser que as rotas de FAQ continuem funcionando,
-    // mas o assistente de IA falhará. Para desenvolvimento, é útil encerrar para depuração.
-    // process.exit(1); // Pode ser reativado para garantir que a chave esteja presente.
-}
+// TEMPORARIAMENTE HARDCODADO PARA TESTE LOCAL. NUNCA FAÇA ISSO EM PRODUÇÃO OU COMMIT NO GIT!
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY; // <--- COLOQUE SUA CHAVE AQUI DIRETAMENTE
 
 // Inicializa o cliente GoogleGenerativeAI globalmente
-const ai = new GoogleGenerativeAI(GEMINI_API_KEY);
+const ai = new GoogleGenerativeAI({ apiKey: "AIzaSyBwBtTn7Tbr5ImAmHOB1HbUF2ENdWVxaZ4" });
 
+// REMOVIDOS OS LOGS DE INSPECÇÃO DO OBJETO 'ai' PARA ESTE TESTE FINAL
+// console.log("Debug: Objeto 'ai' após inicialização:");
+// console.log("  Tipo de 'ai':", typeof ai);
+// console.log("  'ai.chats':", ai.chats);
+// console.log("  'ai.models':", ai.models);
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -44,7 +32,7 @@ const frontendBuildPath = path.join(__dirname, '..', 'public');
 const UPLOADS_DIR = path.join('/app/data', 'uploads');
 const UPLOADS_SERVE_PATH = '/uploads';
 
-// Configuração do Multer para armazenamento de imagens de FAQ (persistente em disco)
+// Configuração do Multer para armazenamento de imagens de FAQ
 const storageFAQImages = multer.diskStorage({
     destination: async (req, file, cb) => {
         await fs.mkdir(UPLOADS_DIR, { recursive: true }).catch(console.error);
@@ -58,7 +46,7 @@ const storageFAQImages = multer.diskStorage({
 });
 const uploadFAQImage = multer({ storage: storageFAQImages });
 
-// Configuração do Multer para lidar com imagens no chat (armazenamento temporário em memória)
+// NOVO: Configuração do Multer para lidar com imagens no chat (armazenamento temporário em memória)
 const storageChatImage = multer.memoryStorage();
 const uploadChatImage = multer({ storage: storageChatImage });
 
@@ -89,8 +77,8 @@ app.delete('/api/uploads/:filename', async (req, res) => {
     const filePath = path.join(UPLOADS_DIR, filename);
 
     try {
-        await fs.access(filePath); // Verifica se o arquivo existe
-        await fs.unlink(filePath); // Remove o arquivo
+        await fs.access(filePath);
+        await fs.unlink(filePath);
         console.log(`Arquivo ${filename} removido do servidor.`);
         res.status(200).json({ message: `Arquivo ${filename} removido com sucesso.` });
     } catch (error) {
@@ -134,7 +122,8 @@ const saveFaqs = async (faqs) => {
 // Função para verificar se a hora atual está dentro do horário de funcionamento
 const isServiceTime = () => {
     // Para testar, retorne true para desabilitar a verificação de horário.
-    return true; // Temporariamente para depuração
+    // Lembre-se de reverter para a lógica de horário em produção!
+    return true; // TEMPORARIAMENTE para depuração
     // const now = new Date();
     // const hour = now.getHours();
     // const minute = now.getMinutes();
@@ -289,17 +278,38 @@ app.put('/api/faqs/category/rename', async (req, res) => {
 
 
 // Rota de proxy para o Assistente de IA com controle de acesso
-// Adicionado `uploadChatImage.single('image')` para lidar com upload de imagens no chat
 app.post('/api/ai-chat', uploadChatImage.single('image'), async (req, res) => {
-    // ... verificações de horário e rate limiting ...
+    // 1. Verificação de Horário
+    // if (!isServiceTime()) {
+    //     return res.status(403).json({ message: "Serviço de Assistente de IA indisponível fora do horário de funcionamento (7h-12h e 13h11-18h, horário de Salvador)." });
+    // }
 
+    // 2. Verificação de Rate Limiting (Básico)
+    const clientIp = req.ip;
+    const currentCount = requestCounts.get(clientIp) || 0;
+
+    if (currentCount >= MAX_REQUESTS_PER_HOUR) {
+        return res.status(429).json({ message: `Limite de requisições de IA atingido (${MAX_REQUESTS_PER_HOUR} por hora). Tente novamente mais tarde.` });
+    }
+    requestCounts.set(clientIp, currentCount + 1);
+    console.log(`Requisição de IA de ${clientIp}. Total: ${currentCount + 1}`);
+
+    // 3. Chamar a API Gemini
     try {
         const { message, history, relevantFAQsContext } = req.body;
         const imageFile = req.file;
 
-        if (!message && !imageFile) {
-            return res.status(400).json({ message: "Mensagem ou imagem é obrigatória." });
+        // Logs de depuração do arquivo de imagem recebido (manter para o ContentUnion debugging)
+        if (imageFile) {
+            console.log("Server - Arquivo de Imagem Recebido:");
+            console.log("  Originalname:", imageFile.originalname);
+            console.log("  Mimetype:", imageFile.mimetype);
+            console.log("  Size (bytes):", imageFile.size);
+            console.log("  Buffer length:", imageFile.buffer ? imageFile.buffer.length : "undefined/null");
+        } else {
+            console.log("Server - Nenhuma imagem anexada na requisição.");
         }
+
 
         const formattedHistory = history ? JSON.parse(history).map((msg) => ({
             role: msg.sender === 'user' ? 'user' : 'model',
@@ -309,10 +319,13 @@ app.post('/api/ai-chat', uploadChatImage.single('image'), async (req, res) => {
         const contentParts = [];
 
         const textPart = relevantFAQsContext ? relevantFAQsContext + message : message;
-        if (textPart) {
+        if (textPart || !imageFile) {
             contentParts.push({ text: textPart });
+        } else if (imageFile) {
+            contentParts.push({ text: "" }); // Adiciona um texto vazio se só tem imagem
         }
 
+        // Se houver imagem, adiciona-a como parte 'inlineData'
         if (imageFile) {
             if (!imageFile.buffer || imageFile.buffer.length === 0) {
                 console.error("Erro: Buffer da imagem está vazio ou inválido!");
@@ -320,6 +333,14 @@ app.post('/api/ai-chat', uploadChatImage.single('image'), async (req, res) => {
             }
 
             const imageBase64 = imageFile.buffer.toString('base64');
+
+            console.log("Server - Image Base64 length before push:", imageBase64.length);
+            if (imageBase64.length === 0) {
+                console.error("Erro: imageBase64 string resultante do buffer está vazia!");
+                return res.status(400).json({ message: "Não foi possível codificar a imagem para Base64." });
+            }
+
+            // Normalizar o mimeType para formatos padrão aceitos pelo Gemini
             let normalizedMimeType = imageFile.mimetype;
             if (normalizedMimeType === 'image/jpg') {
                 normalizedMimeType = 'image/jpeg';
@@ -332,10 +353,8 @@ app.post('/api/ai-chat', uploadChatImage.single('image'), async (req, res) => {
                 },
             });
         }
-        
-        if (contentParts.length === 0) {
-            return res.status(400).json({ message: "Conteúdo da requisição de IA vazio." });
-        }
+
+        console.log("Server - Final Content Parts for Gemini:", JSON.stringify(contentParts).substring(0, 500) + (JSON.stringify(contentParts).length > 500 ? '...' : ''));
 
         const model = ai.getGenerativeModel({ model: GEMINI_MODEL_NAME });
 
@@ -347,11 +366,11 @@ app.post('/api/ai-chat', uploadChatImage.single('image'), async (req, res) => {
                 topP: 1,
                 maxOutputTokens: 2048,
             },
-            // REMOVIDA: systemInstruction: AI_SYSTEM_INSTRUCTION,
+            systemInstruction: AI_SYSTEM_INSTRUCTION,
         });
 
         const result = await chatSession.sendMessage(contentParts);
-        const aiResponseText = result.response.text();
+        const aiResponseText = result.text;
 
         res.json({ response: aiResponseText });
     } catch (error) {
@@ -371,7 +390,7 @@ app.get('*', (req, res) => {
     res.sendFile(path.join(frontendBuildPath, 'index.html'));
 });
 
-app.listen(PORT, () => { // Ouve em '0.0.0.0' para ser acessível externamente no Fly.io
+app.listen(PORT, () => {
     console.log(`Servidor FAQ rodando na porta ${PORT}`);
     console.log(`Diretório de uploads: ${UPLOADS_DIR}`);
 });
