@@ -4,7 +4,6 @@ import Header from './components/Header';
 import FAQSection from './components/FAQSection';
 import AIAssistantSection from './components/AIAssistantSection';
 import ManageFAQsSection from './components/ManageFAQsSection';
-import Footer from './components/Footer';
 import { FAQ as FAQType } from './types';
 import { faqService } from './services/faqService';
 import { SuggestedFAQProposal } from './components/AIAssistantSection';
@@ -252,7 +251,7 @@ const AppContent: React.FC = () => {
     <div className="min-h-screen flex flex-col">
       {/* O Header agora usará o useNavigate para mudar de rota */}
       <Header /> {/* currentView e setCurrentView não são mais passados diretamente */}
-      <main className="flex-grow container mx-auto px-4 py-8">
+      <main className="flex-grow px-4 py-8">
         {loadingFaqs ? (
           <div className="text-center text-slate-600">Carregando FAQs...</div>
         ) : (
@@ -296,7 +295,6 @@ const AppContent: React.FC = () => {
           </Routes>
         )}
       </main>
-      <Footer />
     </div>
   );
 };

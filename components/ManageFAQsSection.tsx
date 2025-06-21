@@ -160,7 +160,7 @@ const ManageFAQsSection: React.FC<ManageFAQsSectionProps> = ({ onAddFAQ, faqToEd
 
   return (
     // Ajuste no padding para telas menores: p-4 (padrão) sm:p-8 (maior)
-    <div className="bg-white p-4 sm:p-8 rounded-lg shadow-xl max-w-2xl mx-auto">
+    <div className="bg-white p-4 sm:p-8 rounded-lg shadow-xl container mx-auto max-w-2xl">
       <h2 className="text-3xl font-bold text-slate-800 mb-6 text-center">{formTitle}</h2>
 
       <form onSubmit={handleSubmit} className="space-y-6">
@@ -173,7 +173,7 @@ const ManageFAQsSection: React.FC<ManageFAQsSectionProps> = ({ onAddFAQ, faqToEd
             id="faq-question"
             value={question}
             onChange={(e) => setQuestion(e.target.value)}
-            className="w-full p-3 border border-slate-300 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-shadow"
+            className="w-full p-3 border border-slate-300 rounded-lg shadow-sm focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-shadow"
             placeholder="Ex: Como resolvo problemas de conexão Wi-Fi?"
             aria-required="true"
             disabled={isSubmitting || isUploading}
@@ -189,7 +189,7 @@ const ManageFAQsSection: React.FC<ManageFAQsSectionProps> = ({ onAddFAQ, faqToEd
             value={answer}
             onChange={(e) => setAnswer(e.target.value)}
             rows={5}
-            className="w-full p-3 border border-slate-300 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-shadow resize-y"
+            className="w-full p-3 border border-slate-300 rounded-lg shadow-sm focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-shadow resize-y"
             placeholder="Descreva a solução passo a passo ou cole a URL da imagem aqui com Markdown."
             aria-required="true"
             disabled={isSubmitting || isUploading}
@@ -199,30 +199,53 @@ const ManageFAQsSection: React.FC<ManageFAQsSectionProps> = ({ onAddFAQ, faqToEd
         {/* Seção de Upload de Ativos (Imagens e Documentos) */}
         <div className="border-t border-slate-200 pt-6 mt-6 space-y-4">
           <h3 className="text-lg font-semibold text-slate-800">Anexar Imagem ou Documento</h3>
-          <input
-            type="file"
-            accept="image/*,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain" // Tipos de arquivos aceitos
-            onChange={handleAssetChange} // Renomeado
-            ref={fileInputRef}
-            className="block w-full text-sm text-slate-500
-                       file:mr-4 file:py-2 file:px-4
-                       file:rounded-full file:border-0
-                       file:text-sm file:font-semibold
-                       file:bg-blue-50 file:text-blue-700
-                       hover:file:bg-blue-100 disabled:opacity-50 disabled:cursor-not-allowed"
-            disabled={isSubmitting || isUploading} // Usar novo estado
-          />
+
+          {/* NOVO: Div para o botão de escolha de arquivo e nome do arquivo selecionado */}
+          <div className="flex items-center space-x-3">
+            {/* Botão customizado para "Escolher ficheiro" */}
+            <label htmlFor="file-upload-input"
+              className="cursor-pointer bg-orange-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-orange-700 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-offset-2 transition-colors duration-150 ease-in-out disabled:opacity-50 disabled:cursor-not-allowed"
+              // Desabilita o label se o formulário estiver sendo submetido ou o upload estiver em andamento
+              style={{ pointerEvents: (isSubmitting || isUploading) ? 'none' : 'auto', opacity: (isSubmitting || isUploading) ? 0.5 : 1 }}
+            >
+              Escolher ficheiro
+            </label>
+            {/* Input de arquivo real - ESCONDIDO */}
+            <input
+              id="file-upload-input" // ID para conectar com o label
+              type="file"
+              accept="image/*,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain"
+              onChange={handleAssetChange}
+              ref={fileInputRef}
+              className="hidden" // Classe para esconder o input nativo
+              disabled={isSubmitting || isUploading} // Manter disabled para consistência
+            />
+            {/* Exibe o nome do arquivo selecionado */}
+            {selectedAssetFile ? (
+              <span className="text-slate-700 text-sm font-medium truncate max-w-[calc(100%-150px)]"> {/* truncate para nomes longos */}
+                {selectedAssetFile.name}
+              </span>
+            ) : (
+              <span className="text-slate-500 text-sm">Nenhum ficheiro selecionado</span>
+            )}
+          </div>
+
+          {/* Botão de "Fazer Upload do Arquivo" (este continua separado) */}
           <button
             type="button"
-            onClick={handleAssetUpload} // Renomeado
-            className="w-full bg-green-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-150 ease-in-out flex items-center justify-center"
-            disabled={!selectedAssetFile || isSubmitting || isUploading} // Usar novo estado
+            onClick={handleAssetUpload}
+            className="w-full bg-orange-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-orange-700 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-150 ease-in-out flex items-center justify-center"
+            disabled={!selectedAssetFile || isSubmitting || isUploading}
           >
-            {isUploading ? <LoadingSpinner size="sm" color="text-white" /> : 'Fazer Upload do Arquivo'} {/* Usar novo estado */}
+            {isUploading ? <LoadingSpinner size="sm" color="text-white" /> : 'Fazer Upload do Arquivo'}
           </button>
-          {uploadedAssetUrl && ( // Renomeado
-            <p className="text-sm text-blue-600 bg-blue-50 p-3 rounded-md break-all">
+
+          {/* Mensagem de URL do arquivo e sugestão Markdown */}
+          {uploadedAssetUrl && (
+            <p className="text-sm text-orange-600 bg-orange-50 p-3 rounded-md break-all">
               URL do Arquivo: <a href={uploadedAssetUrl} target="_blank" rel="noopener noreferrer" className="underline">{uploadedAssetUrl}</a>
+              <br />
+              **Sugestão Markdown:** `[Link para o Arquivo](${uploadedAssetUrl})`
             </p>
           )}
         </div>
@@ -238,7 +261,7 @@ const ManageFAQsSection: React.FC<ManageFAQsSectionProps> = ({ onAddFAQ, faqToEd
             id="faq-category"
             value={category}
             onChange={(e) => setCategory(e.target.value)}
-            className="w-full p-3 border border-slate-300 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-shadow"
+            className="w-full p-3 border border-slate-300 rounded-lg shadow-sm focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-shadow"
             placeholder="Ex: Conectividade, Software, Hardware"
             aria-required="true"
             disabled={isSubmitting || isUploading}
@@ -272,7 +295,7 @@ const ManageFAQsSection: React.FC<ManageFAQsSectionProps> = ({ onAddFAQ, faqToEd
           )}
           <button
             type="submit"
-            className="w-full sm:w-auto bg-blue-600 text-white font-semibold py-3 px-4 rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors duration-150 ease-in-out disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full sm:w-auto bg-orange-600 text-white font-semibold py-3 px-4 rounded-lg hover:bg-orange-700 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-offset-2 transition-colors duration-150 ease-in-out disabled:opacity-50 disabled:cursor-not-allowed"
             disabled={isSubmitting || isUploading}
           >
             {isSubmitting ? (faqToEdit ? 'Salvando...' : 'Adicionando...') : (faqToEdit ? 'Salvar Edição' : 'Adicionar FAQ')}

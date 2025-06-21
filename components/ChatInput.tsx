@@ -33,7 +33,7 @@ const ChatInput: React.FC<ChatInputProps> = ({ onSendMessage, isLoading }) => {
   };
 
   return (
-    <form onSubmit={handleSubmit} className="flex items-center p-2 border-t border-slate-200 bg-white rounded-b-lg">
+    <form onSubmit={handleSubmit} className="flex items-center p-2 border-t border-slate-100 bg-white rounded-b-lg">
       {/* NOVO: Input de arquivo para imagem com label para estilização */}
       <label htmlFor="image-upload" className="cursor-pointer p-2 rounded-lg hover:bg-slate-100 transition-colors">
         {/* Ícone de anexo (clip) ou de imagem, você pode escolher ou usar um dos seus Icons.tsx */}
@@ -75,15 +75,14 @@ const ChatInput: React.FC<ChatInputProps> = ({ onSendMessage, isLoading }) => {
           }
         }}
         placeholder="Digite sua pergunta aqui..."
-        className="flex-grow p-3 border border-slate-300 rounded-lg resize-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-shadow mr-2 min-h-[44px] max-h-[120px]"
-        rows={1}
+        className="flex-grow p-3 border border-slate-200 rounded-lg shadow-inner focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all duration-200 mr-2 min-h-[44px] max-h-[120px] resize-none" rows={1}
         disabled={isLoading}
       />
       <button
         type="submit"
         // Desabilita o botão se estiver carregando OU se não houver texto E não houver imagem selecionada
         disabled={isLoading || (!inputText.trim() && !selectedImage)}
-        className="bg-blue-600 text-white p-3 rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+        className="bg-orange-600 text-white p-3 rounded-lg hover:bg-orange-700 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
       >
         {isLoading ? (
           // Spinner de carregamento

@@ -270,9 +270,9 @@ const AIAssistantSection: React.FC<AIAssistantSectionProps> = ({ onFaqAction, fa
   };
 
   return (
-    <div className="bg-white p-4 sm:p-6 rounded-lg shadow-xl flex flex-col h-[75vh] max-h-[700px]">
+    <div className="bg-white p-4 sm:p-6 rounded-lg shadow-xl flex flex-col flex-grow">
       <div className="flex items-center mb-4 pb-4 border-b border-slate-200">
-        <SparklesIcon className="w-8 h-8 text-blue-600 mr-3" />
+        <SparklesIcon className="w-8 h-8 text-orange-600 mr-3" />
         <h2 className="text-2xl sm:text-3xl font-bold text-slate-800">Assistente de IA</h2>
       </div>
 
@@ -292,7 +292,7 @@ const AIAssistantSection: React.FC<AIAssistantSectionProps> = ({ onFaqAction, fa
 
       {suggestedFAQProposal && (
         <div className="my-4 p-4 border border-blue-300 bg-blue-50 rounded-lg shadow-md">
-          <div className="flex items-center text-blue-700 mb-3">
+          <div className="flex items-center text-orange-700 mb-3">
             <InformationCircleIcon className="w-6 h-6 mr-2" />
             <h3 className="text-lg font-semibold">
               Sugestão para {
@@ -341,7 +341,7 @@ const AIAssistantSection: React.FC<AIAssistantSectionProps> = ({ onFaqAction, fa
             </button>
             <button
               onClick={handleConfirmAddToFAQ}
-              className="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md transition-colors flex items-center"
+              className="px-4 py-2 text-sm font-medium text-white bg-orange-600 hover:bg-orange-700 rounded-md transition-colors flex items-center"
               aria-label="Sim, aceitar sugestão"
             >
               <CheckCircleIcon className="w-5 h-5 mr-1.5" />

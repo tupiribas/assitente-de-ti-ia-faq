@@ -18,32 +18,32 @@ const Header: React.FC = () => {
   return (
     <header className="bg-white shadow-md">
       <div className="container mx-auto px-4 py-4 flex flex-col sm:flex-row justify-between items-center">
-        <div className="flex items-center text-2xl font-bold text-blue-700 mb-4 sm:mb-0">
-          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-8 h-8 mr-2 text-blue-600">
+        <div className="flex items-center text-2xl font-bold text-orange-700 mb-4 sm:mb-0">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-8 h-8 mr-2 text-orange-600">
             <path strokeLinecap="round" strokeLinejoin="round" d="M12 9.75v6.75m0 0l-3-3m3 3l3-3m-8.25 6a4.5 4.5 0 01-1.41-8.775 5.25 5.25 0 0110.039 0 4.5 4.5 0 01-1.41 8.775H5.25z" />
           </svg>
           Assistente de TI IA & FAQ
         </div>
         <nav className="flex space-x-2 sm:space-x-4">
           <button
-            onClick={() => navigate('/faqs')} // <--- Usa navigate
-            className={baseButtonClasses}
+            onClick={() => navigate('/faqs')}
+            className="flex items-center px-4 py-2 rounded-md text-sm font-medium transition-colors duration-150 ease-in-out text-slate-700 hover:bg-orange-100 hover:text-orange-700"
             aria-label="Perguntas Frequentes"
           >
             <LightBulbIcon className="w-5 h-5 mr-2" />
             FAQs
           </button>
           <button
-            onClick={() => navigate('/ai-assistant')} // <--- Usa navigate
-            className={baseButtonClasses}
+            onClick={() => navigate('/ai-assistant')}
+            className="flex items-center px-4 py-2 rounded-md text-sm font-medium transition-colors duration-150 ease-in-out text-slate-700 hover:bg-orange-100 hover:text-orange-700"
             aria-label="Assistente de Inteligência Artificial"
           >
             <SpeechBubbleIcon className="w-5 h-5 mr-2" />
             Assistente IA
           </button>
           <button
-            onClick={() => navigate('/manage-faq/new')} // <--- Usa navigate para nova rota de criação
-            className={baseButtonClasses}
+            onClick={() => navigate('/manage-faq/new')}
+            className="flex items-center px-4 py-2 rounded-md text-sm font-medium transition-colors duration-150 ease-in-out text-slate-700 hover:bg-orange-100 hover:text-orange-700"
             aria-label="Criar Novo FAQ"
           >
             <PlusCircleIcon className="w-5 h-5 mr-2" />

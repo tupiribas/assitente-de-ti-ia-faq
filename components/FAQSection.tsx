@@ -57,7 +57,7 @@ const FAQSection: React.FC<FAQSectionProps> = ({ faqs, onEditFAQ, onDeleteFAQ })
 
 
   return (
-    <div className="bg-white p-6 sm:p-8 rounded-lg shadow-xl">
+    <div className="bg-white p-6 sm:p-8 rounded-lg shadow-xl container mx-auto max-w-4xl">
       <h2 className="text-3xl font-bold text-slate-800 mb-6 text-center">Perguntas Frequentes (FAQ)</h2>
 
       <div className="mb-8 relative">
@@ -75,7 +75,7 @@ const FAQSection: React.FC<FAQSectionProps> = ({ faqs, onEditFAQ, onDeleteFAQ })
       {Object.keys(faqsByCategory).length > 0 ? (
         Object.entries(faqsByCategory).map(([category, categoryFaqs]) => (
           <div key={category} className="mb-8">
-            <h3 className="text-xl font-semibold text-blue-700 mb-4 border-b-2 border-blue-200 pb-2">{category}</h3>
+            <h3 className="text-xl font-semibold text-orange-700 mb-4 border-b-2 border-orange-200 pb-2">{category}</h3>
             <div className="space-y-3">
               {categoryFaqs.map((faq) => (
                 <FAQItem
