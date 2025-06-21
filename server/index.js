@@ -85,7 +85,7 @@ const uploadFAQAsset = multer({
 const storageChatImage = multer.memoryStorage();
 const uploadChatImage = multer({
     storage: storageChatImage,
-    limits: { fileSize: 5 * 1024 * 1024 } // Exemplo: limite de 5MB. Ajuste conforme necessidade.
+    limits: { fileSize: 10 * 1024 * 1024 } // Define um limite de 10MB por arquivo (ajuste se necessário)
 });
 
 

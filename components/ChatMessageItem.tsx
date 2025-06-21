@@ -1,41 +1,17 @@
+// Em components/ChatMessageItem.tsx
 
 import React from 'react';
-import { ChatMessage } from '../types'; // Correctly named ChatMessage
-import { UserCircleIcon, CpuChipIcon } from './Icons'; // Assuming CpuChipIcon for AI
+import { ChatMessage } from '../types';
+import { UserCircleIcon, CpuChipIcon } from './Icons';
 import ReactMarkdown from 'react-markdown';
-import { LinkRenderer } from './FAQItem';
+import { LinkRenderer } from './FAQItem'; // Certifique-se de que LinkRenderer está exportado em FAQItem.tsx
 
-interface ChatMessageItemProps { // Renamed interface for clarity
+interface ChatMessageItemProps {
   message: ChatMessage;
 }
 
 const ChatMessageItem: React.FC<ChatMessageItemProps> = ({ message }) => {
   const isUser = message.sender === 'user';
-
-  // // Basic markdown to HTML conversion for bold, italics, and newlines
-  // const formatText = (text: string) => {
-  //   let html = text;
-  //   // Newlines to <br>
-  //   html = html.replace(/\n/g, '<br />');
-  //   // **bold** to <strong>bold</strong>
-  //   html = html.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
-  //   // *italic* to <em>italic</em>
-  //   html = html.replace(/\*(.*?)\*/g, '<em>$1</em>');
-  //   // `code` to <code>code</code>
-  //   html = html.replace(/`(.*?)`/g, '<code class="bg-slate-200 dark:bg-slate-700 px-1 py-0.5 rounded text-sm">$1</code>');
-
-  //   // For lists (simple conversion: lines starting with '-' or '*' or '1.' become list items)
-  //   html = html.replace(/^(\s*[-*]|\s*\d+\.)\s+(.*?)(\<br \/\>|$)/gm, (match, p1, p2) => {
-  //     return `<li class="ml-4">${p2.trim()}</li>`;
-  //   });
-  //   // Wrap groups of <li> in <ul> or <ol> - this is a simplification
-  //   if (html.includes('<li')) {
-  //     html = `<ul>${html}</ul>`.replace(/<\/ul>\s*<ul>/g, ''); // Crude joining of lists
-  //   }
-
-  //   return { __html: html };
-  // };
-
 
   return (
     <div className={`flex ${isUser ? 'justify-end' : 'justify-start'} mb-3`}>
@@ -49,8 +25,13 @@ const ChatMessageItem: React.FC<ChatMessageItemProps> = ({ message }) => {
           className={`px-4 py-3 rounded-xl shadow ${isUser ? 'bg-orange-500 text-white rounded-br-none' : 'bg-slate-200 text-slate-800 rounded-bl-none'
             }`}
         >
+          {message.imagePreviewUrl && ( // NOVO: Exibe a imagem se imagePreviewUrl existir
+            <div className="mb-2 max-w-full overflow-hidden rounded-md">
+              <img src={message.imagePreviewUrl} alt="Pré-visualização da imagem" className="max-w-full h-auto object-contain" />
+            </div>
+          )}
+          {/* Usa ReactMarkdown para o conteúdo de texto, como implementado anteriormente */}
           <div className="prose prose-sm max-w-none text-sm">
-            {/* MODIFICADO: Usa ReactMarkdown para renderizar o texto da mensagem */}
             <ReactMarkdown components={{ a: LinkRenderer }}>
               {message.text}
             </ReactMarkdown>
