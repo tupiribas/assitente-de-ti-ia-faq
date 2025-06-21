@@ -6,9 +6,9 @@ import LoadingSpinner from './LoadingSpinner';
 
 interface ManageFAQsSectionProps {
   onAddFAQ: (newFaqData: Omit<FAQ, 'id'>) => Promise<FAQ>;
-  faqToEdit?: FAQ | null; // Continua opcional pois é null para nova criação
-  onSaveEditedFAQ: (updatedFaqData: Omit<FAQ, 'id'>) => Promise<void>; // Agora é obrigatório
-  onCancel: () => void; // Agora é obrigatório
+  faqToEdit?: FAQ | null;
+  onSaveEditedFAQ: (updatedFaqData: FAQ) => Promise<void>; // <--- CORRIGIDO: Agora aceita o tipo FAQ completo
+  onCancel: () => void;
 }
 
 const ManageFAQsSection: React.FC<ManageFAQsSectionProps> = ({ onAddFAQ, faqToEdit, onSaveEditedFAQ, onCancel }) => {
@@ -19,9 +19,10 @@ const ManageFAQsSection: React.FC<ManageFAQsSectionProps> = ({ onAddFAQ, faqToEd
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [uploadingImage, setUploadingImage] = useState(false);
-  const [uploadedImageUrl, setUploadedImageUrl] = useState<string | null>(null);
+  const [selectedAssetFile, setSelectedAssetFile] = useState<File | null>(null); // Renomeado
+  const [isUploading, setIsUploading] = useState(false); // Renomeado
+  const [uploadedAssetUrl, setUploadedAssetUrl] = useState<string | null>(null); // Renomeado
+  const [uploadedAssetText, setUploadedAssetText] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -36,56 +37,74 @@ const ManageFAQsSection: React.FC<ManageFAQsSectionProps> = ({ onAddFAQ, faqToEd
     }
     setError(null);
     setSuccessMessage(null);
-    setUploadedImageUrl(null);
+    setUploadedAssetUrl(null);
+    setUploadedAssetText(null);
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
   }, [faqToEdit]);
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleAssetChange = (e: React.ChangeEvent<HTMLInputElement>) => { // Renomeado
     if (e.target.files && e.target.files[0]) {
-      setSelectedFile(e.target.files[0]);
-      setUploadedImageUrl(null);
+      setSelectedAssetFile(e.target.files[0]); // Usar novo estado
+      setUploadedAssetUrl(null);
+      setUploadedAssetText(null);
     } else {
-      setSelectedFile(null);
+      setSelectedAssetFile(null);
     }
   };
 
-  const handleImageUpload = async () => {
-    if (!selectedFile) {
-      setError('Por favor, selecione um arquivo de imagem para fazer o upload.');
+  const handleAssetUpload = async () => { // Renomeado
+    if (!selectedAssetFile) { // Usar novo estado
+      setError('Por favor, selecione um arquivo (imagem ou documento) para fazer o upload.');
       return;
     }
 
-    setUploadingImage(true);
+    setIsUploading(true); // Usar novo estado
     setError(null);
     setSuccessMessage(null);
 
     const formData = new FormData();
-    formData.append('image', selectedFile);
+    formData.append('file', selectedAssetFile); // 'file' é o nome do campo esperado no Multer do backend
 
     try {
-      const response = await fetch('/api/upload-image', {
+      // Mudar a rota para a nova /api/upload-asset
+      const response = await fetch('/api/upload-asset', {
         method: 'POST',
         body: formData,
       });
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.message || 'Falha no upload da imagem.');
+        throw new Error(errorData.message || 'Falha no upload do arquivo.');
       }
 
       const data = await response.json();
-      setUploadedImageUrl(data.imageUrl);
-      setSuccessMessage('Imagem enviada com sucesso! Copie a URL para usar no FAQ.');
-      setAnswer(prevAnswer => prevAnswer + `\n\n![Descrição da Imagem](${data.imageUrl})\n`);
+      setUploadedAssetUrl(data.fileUrl); // 'fileUrl' vem do backend
+      setUploadedAssetText(data.extractedText); // 'extractedText' vem do backend (será null para imagens)
+
+      let confirmationMessage = 'Arquivo enviado com sucesso!';
+      let textToAppend = '';
+
+      if (data.extractedText) {
+        confirmationMessage += ' Documento enviado e texto extraído com sucesso! O documento será anexado a este FAQ.';
+        textToAppend = `\n\n[Clique para ver/baixar o documento: ${selectedAssetFile.name}](${data.fileUrl})\n`; // Linha corrigida
+        // NÃO adicionamos mais o extractedText diretamente ao `answer` aqui para o usuário final
+        // Ele será salvo separadamente nos dados do FAQ.
+      } else {
+        confirmationMessage += ' Imagem enviada com sucesso! URL copiada. Cole a URL no campo Resposta para usar no FAQ.';
+        textToAppend = `\n\n![Descrição da Imagem](${data.fileUrl})\n`; // Link para a imagem
+      }
+
+      setSuccessMessage(confirmationMessage);
+      setAnswer(prevAnswer => prevAnswer + textToAppend); // Adiciona a URL/texto ao campo de resposta
 
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : "Erro desconhecido ao enviar imagem.";
+      const errorMessage = err instanceof Error ? err.message : "Erro desconhecido ao enviar arquivo.";
       setError(`Erro no upload: ${errorMessage}`);
     } finally {
-      setUploadingImage(false);
-      setSelectedFile(null);
+      setIsUploading(false); // Usar novo estado
+      setSelectedAssetFile(null); // Usar novo estado
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
       }
@@ -106,14 +125,25 @@ const ManageFAQsSection: React.FC<ManageFAQsSectionProps> = ({ onAddFAQ, faqToEd
     }
 
     try {
+      // Crie o objeto de dados do FAQ com os novos campos
+      const faqDataToSave = {
+        question,
+        answer,
+        category,
+        documentUrl: uploadedAssetUrl || undefined, // Inclui a URL do documento/imagem se existir
+        documentText: uploadedAssetText || undefined, // Inclui o texto extraído se existir
+      };
+
       if (faqToEdit) { // Se for modo de edição
-        await onSaveEditedFAQ({ question, answer, category }); // Chama a prop para salvar edição
+        await onSaveEditedFAQ({ ...faqDataToSave, id: faqToEdit.id }); // Passe o ID para edição
         setSuccessMessage('FAQ atualizado com sucesso!');
       } else { // Se for modo de criação
-        await onAddFAQ({ question, answer, category }); // Chama a prop para adicionar
+        await onAddFAQ(faqDataToSave);
         setQuestion('');
         setAnswer('');
         setCategory('');
+        setUploadedAssetUrl(null); // Limpa após salvar
+        setUploadedAssetText(null); // Limpa após salvar
         setSuccessMessage('FAQ adicionado com sucesso!');
       }
       setTimeout(() => setSuccessMessage(null), 3000);
@@ -146,7 +176,7 @@ const ManageFAQsSection: React.FC<ManageFAQsSectionProps> = ({ onAddFAQ, faqToEd
             className="w-full p-3 border border-slate-300 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-shadow"
             placeholder="Ex: Como resolvo problemas de conexão Wi-Fi?"
             aria-required="true"
-            disabled={isSubmitting || uploadingImage}
+            disabled={isSubmitting || isUploading}
           />
         </div>
 
@@ -162,17 +192,17 @@ const ManageFAQsSection: React.FC<ManageFAQsSectionProps> = ({ onAddFAQ, faqToEd
             className="w-full p-3 border border-slate-300 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-shadow resize-y"
             placeholder="Descreva a solução passo a passo ou cole a URL da imagem aqui com Markdown."
             aria-required="true"
-            disabled={isSubmitting || uploadingImage}
+            disabled={isSubmitting || isUploading}
           />
         </div>
 
-        {/* Seção de Upload de Imagem */}
+        {/* Seção de Upload de Ativos (Imagens e Documentos) */}
         <div className="border-t border-slate-200 pt-6 mt-6 space-y-4">
-          <h3 className="text-lg font-semibold text-slate-800">Anexar Imagem</h3>
+          <h3 className="text-lg font-semibold text-slate-800">Anexar Imagem ou Documento</h3>
           <input
             type="file"
-            accept="image/*"
-            onChange={handleFileChange}
+            accept="image/*,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain" // Tipos de arquivos aceitos
+            onChange={handleAssetChange} // Renomeado
             ref={fileInputRef}
             className="block w-full text-sm text-slate-500
                        file:mr-4 file:py-2 file:px-4
@@ -180,25 +210,23 @@ const ManageFAQsSection: React.FC<ManageFAQsSectionProps> = ({ onAddFAQ, faqToEd
                        file:text-sm file:font-semibold
                        file:bg-blue-50 file:text-blue-700
                        hover:file:bg-blue-100 disabled:opacity-50 disabled:cursor-not-allowed"
-            disabled={isSubmitting || uploadingImage}
+            disabled={isSubmitting || isUploading} // Usar novo estado
           />
           <button
             type="button"
-            onClick={handleImageUpload}
+            onClick={handleAssetUpload} // Renomeado
             className="w-full bg-green-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-150 ease-in-out flex items-center justify-center"
-            disabled={!selectedFile || isSubmitting || uploadingImage}
+            disabled={!selectedAssetFile || isSubmitting || isUploading} // Usar novo estado
           >
-            {uploadingImage ? <LoadingSpinner size="sm" color="text-white" /> : 'Fazer Upload da Imagem'}
+            {isUploading ? <LoadingSpinner size="sm" color="text-white" /> : 'Fazer Upload do Arquivo'} {/* Usar novo estado */}
           </button>
-          {uploadedImageUrl && (
+          {uploadedAssetUrl && ( // Renomeado
             <p className="text-sm text-blue-600 bg-blue-50 p-3 rounded-md break-all">
-              URL da Imagem: <a href={uploadedImageUrl} target="_blank" rel="noopener noreferrer" className="underline">{uploadedImageUrl}</a>
-              <br/>
-              **Sugestão Markdown:** `![Alt Text da Imagem]({uploadedImageUrl})`
+              URL do Arquivo: <a href={uploadedAssetUrl} target="_blank" rel="noopener noreferrer" className="underline">{uploadedAssetUrl}</a>
             </p>
           )}
         </div>
-        {/* FIM: Seção de Upload de Imagem */}
+        {/* FIM: Seção de Upload de Ativos */}
 
 
         <div>
@@ -213,7 +241,7 @@ const ManageFAQsSection: React.FC<ManageFAQsSectionProps> = ({ onAddFAQ, faqToEd
             className="w-full p-3 border border-slate-300 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-shadow"
             placeholder="Ex: Conectividade, Software, Hardware"
             aria-required="true"
-            disabled={isSubmitting || uploadingImage}
+            disabled={isSubmitting || isUploading}
           />
         </div>
 
@@ -237,7 +265,7 @@ const ManageFAQsSection: React.FC<ManageFAQsSectionProps> = ({ onAddFAQ, faqToEd
               type="button"
               onClick={onCancel}
               className="w-full sm:w-auto bg-slate-400 text-white font-semibold py-3 px-4 rounded-lg hover:bg-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-500 focus:ring-offset-2 transition-colors duration-150 ease-in-out disabled:opacity-50 disabled:cursor-not-allowed"
-              disabled={isSubmitting || uploadingImage}
+              disabled={isSubmitting || isUploading}
             >
               Cancelar
             </button>
@@ -245,7 +273,7 @@ const ManageFAQsSection: React.FC<ManageFAQsSectionProps> = ({ onAddFAQ, faqToEd
           <button
             type="submit"
             className="w-full sm:w-auto bg-blue-600 text-white font-semibold py-3 px-4 rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors duration-150 ease-in-out disabled:opacity-50 disabled:cursor-not-allowed"
-            disabled={isSubmitting || uploadingImage}
+            disabled={isSubmitting || isUploading}
           >
             {isSubmitting ? (faqToEdit ? 'Salvando...' : 'Adicionando...') : (faqToEdit ? 'Salvar Edição' : 'Adicionar FAQ')}
           </button>

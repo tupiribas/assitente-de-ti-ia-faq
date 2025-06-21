@@ -10,6 +10,9 @@ const { v4: uuidv4 } = require('uuid');
 // CORRIGIDO: Usar a importação correta para a nova biblioteca @google/generative-ai
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const multer = require('multer'); // Importa o Multer para lidar com upload de arquivos
+const pdf = require('pdf-parse'); // Para PDFs
+const mammoth = require('mammoth'); // Para DOCX
+const util = require('util'); // Utilitário para promisify
 
 // Importar do diretório de build após compilação.
 // CORRIGIDO: Caminho da importação para 'constants'
@@ -45,7 +48,7 @@ const UPLOADS_DIR = path.join('/app/data', 'uploads');
 const UPLOADS_SERVE_PATH = '/uploads';
 
 // Configuração do Multer para armazenamento de imagens de FAQ (persistente em disco)
-const storageFAQImages = multer.diskStorage({
+const storageFAQAssets = multer.diskStorage({
     destination: async (req, file, cb) => {
         await fs.mkdir(UPLOADS_DIR, { recursive: true }).catch(console.error);
         cb(null, UPLOADS_DIR);
@@ -56,7 +59,27 @@ const storageFAQImages = multer.diskStorage({
         cb(null, file.fieldname + '-' + uniqueSuffix + fileExtension);
     }
 });
-const uploadFAQImage = multer({ storage: storageFAQImages });
+
+// NOVO: Função para filtrar tipos de arquivo permitidos
+const fileFilter = (req, file, cb) => {
+    const allowedMimeTypes = [
+        'image/jpeg', 'image/png', 'image/gif', 'image/webp', // Imagens
+        'application/pdf', // PDFs
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document', // DOCX
+        'text/plain' // TXT
+    ];
+    if (allowedMimeTypes.includes(file.mimetype)) {
+        cb(null, true); // Aceita o arquivo
+    } else {
+        cb(new Error('Tipo de arquivo não permitido. Apenas imagens (JPG, PNG, GIF, WEBP), PDF, DOCX e TXT são suportados.'), false);
+    }
+};
+
+const uploadFAQAsset = multer({
+    storage: storageFAQAssets,
+    fileFilter: fileFilter, // Aplica o filtro
+    limits: { fileSize: 10 * 1024 * 1024 } // Limite de 10MB por arquivo (ajuste conforme necessário)
+});
 
 // Configuração do Multer para lidar com imagens no chat (armazenamento temporário em memória)
 const storageChatImage = multer.memoryStorage();
@@ -73,14 +96,42 @@ app.use(UPLOADS_SERVE_PATH, express.static(UPLOADS_DIR));
 // Servir arquivos estáticos do frontend (geralmente vai para ./public)
 app.use(express.static(frontendBuildPath));
 
-
-// Rota para upload de imagens de FAQ
-app.post('/api/upload-image', uploadFAQImage.single('image'), (req, res) => {
+// NOVO: Rota para upload de imagens e documentos
+app.post('/api/upload-asset', uploadFAQAsset.single('file'), async (req, res) => { // 'file' é o nome do campo no formulário
     if (!req.file) {
         return res.status(400).json({ message: 'Nenhum arquivo enviado.' });
     }
-    const imageUrl = `${UPLOADS_SERVE_PATH}/${req.file.filename}`;
-    res.status(200).json({ imageUrl: imageUrl });
+
+    const fileUrl = `${UPLOADS_SERVE_PATH}/${req.file.filename}`;
+    let extractedText = null;
+
+    try {
+        if (req.file.mimetype === 'application/pdf') {
+            extractedText = await extractTextFromPdf(req.file.path);
+        } else if (req.file.mimetype === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
+            extractedText = await extractTextFromDocx(req.file.path);
+        } else if (req.file.mimetype === 'text/plain') {
+            extractedText = await extractTextFromTxt(req.file.path);
+        }
+        // Para imagens, extractedText permanece null, o que é o comportamento desejado.
+        // O `imageURL` é a URL direta para o arquivo.
+        // O `fileUrl` será a URL do documento se for um documento.
+
+        res.status(200).json({
+            fileUrl: fileUrl, // URL do arquivo original (imagem ou documento)
+            extractedText: extractedText // Texto extraído (null para imagens)
+        });
+
+    } catch (error) {
+        console.error(`Erro no processamento do arquivo ${req.file.filename}:`, error);
+        // Tenta remover o arquivo se a extração falhar para evitar lixo
+        try {
+            await fs.unlink(req.file.path);
+        } catch (unlinkError) {
+            console.error(`Erro ao remover arquivo parcial ${req.file.filename}:`, unlinkError);
+        }
+        res.status(500).json({ message: `Erro ao processar o arquivo: ${error.message}` });
+    }
 });
 
 // Rota DELETE para remover uma imagem de FAQ pelo nome do arquivo
@@ -130,6 +181,39 @@ const saveFaqs = async (faqs) => {
         throw new Error('Falha ao salvar FAQs.');
     }
 };
+// Função para extrair texto de um PDF
+async function extractTextFromPdf(filePath) {
+    try {
+        const dataBuffer = await fs.readFile(filePath);
+        const data = await pdf(dataBuffer);
+        return data.text;
+    } catch (error) {
+        console.error(`Erro ao extrair texto do PDF ${filePath}:`, error);
+        throw new Error('Falha ao extrair texto do PDF.');
+    }
+}
+
+// Função para extrair texto de um DOCX
+async function extractTextFromDocx(filePath) {
+    try {
+        const result = await mammoth.extractRawText({ path: filePath });
+        return result.value; // O texto extraído
+    } catch (error) {
+        console.error(`Erro ao extrair texto do DOCX ${filePath}:`, error);
+        throw new Error('Falha ao extrair texto do DOCX.');
+    }
+}
+
+// Função para extrair texto de um TXT
+async function extractTextFromTxt(filePath) {
+    try {
+        const data = await fs.readFile(filePath, 'utf8');
+        return data;
+    } catch (error) {
+        console.error(`Erro ao extrair texto do TXT ${filePath}:`, error);
+        throw new Error('Falha ao extrair texto do TXT.');
+    }
+}
 
 // Função para verificar se a hora atual está dentro do horário de funcionamento
 const isServiceTime = () => {
@@ -167,14 +251,14 @@ app.get('/api/faqs', async (req, res) => {
 
 // Rota POST para adicionar um novo FAQ
 app.post('/api/faqs', async (req, res) => {
-    const { question, answer, category } = req.body;
+    const { question, answer, category, documentUrl, documentText } = req.body; // NOVO: Obtenha documentUrl e documentText
     if (!question || !answer || !category) {
-        return res.status(400).json({ message: 'Todos os campos são obrigatórios.' });
+        return res.status(400).json({ message: 'Todos os campos (Pergunta, Resposta, Categoria) são obrigatórios.' });
     }
 
     try {
         const faqs = await loadFaqs();
-        const newFaq = { id: uuidv4(), question, answer, category };
+        const newFaq = { id: uuidv4(), question, answer, category, documentUrl, documentText }; // NOVO: Inclua documentUrl e documentText
         faqs.unshift(newFaq);
         await saveFaqs(faqs);
         res.status(201).json(newFaq);
@@ -186,7 +270,7 @@ app.post('/api/faqs', async (req, res) => {
 // Rota PUT para atualizar um FAQ existente
 app.put('/api/faqs/:id', async (req, res) => {
     const { id } = req.params;
-    const { question, answer, category } = req.body;
+    const { question, answer, category, documentUrl, documentText } = req.body; // NOVO: Obtenha documentUrl e documentText
 
     if (!question || !answer || !category) {
         return res.status(400).json({ message: 'Todos os campos (Pergunta, Resposta e Categoria) são obrigatórios para atualização.' });
@@ -200,7 +284,8 @@ app.put('/api/faqs/:id', async (req, res) => {
             return res.status(404).json({ message: `FAQ com ID ${id} não encontrado.` });
         }
 
-        faqs[faqIndex] = { id, question, answer, category };
+        // NOVO: Inclua documentUrl e documentText na atualização
+        faqs[faqIndex] = { id, question, answer, category, documentUrl, documentText };
 
         await saveFaqs(faqs);
         res.status(200).json(faqs[faqIndex]);

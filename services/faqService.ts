@@ -19,7 +19,7 @@ const faqService = {
     }
   },
 
-  saveFAQs: async (newFaqData: Omit<FAQ, 'id'>): Promise<FAQ> => {
+  saveFAQs: async (newFaqData: Omit<FAQ, 'id'> & { documentUrl?: string; documentText?: string }): Promise<FAQ> => {
     try {
       const response = await fetch(API_BASE_URL, {
         method: 'POST',
@@ -41,7 +41,7 @@ const faqService = {
     }
   },
 
-  updateFAQ: async (updatedFaq: FAQ): Promise<FAQ> => {
+  updateFAQ: async (updatedFaq: FAQ & { documentUrl?: string; documentText?: string }): Promise<FAQ> => {
     try {
       // Corrigido: Use backticks (crases) e a sintaxe correta para interpolação ${}.
       const response = await fetch(`${API_BASE_URL}/${updatedFaq.id}`, {

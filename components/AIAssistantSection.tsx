@@ -8,7 +8,7 @@ import { geminiService } from '../services/geminiService'; // Agora um cliente d
 import { SparklesIcon, CheckCircleIcon, XCircleIcon, InformationCircleIcon } from './Icons';
 
 // Interface para a sugestão de FAQ proposta pela IA
-interface SuggestedFAQProposal {
+export interface SuggestedFAQProposal {
   action: 'add' | 'update' | 'delete' | 'deleteCategory' | 'renameCategory';
   id?: string;
   question?: string;
@@ -29,7 +29,7 @@ interface AIAssistantSectionProps {
   faqs: FAQType[];
 }
 
-// Função para encontrar FAQs relevantes (para Retrieval Augmented Generation - RAG)
+// MODIFICADO: Função findRelevantFAQs para incluir informações de imagem E documento no texto de contexto.
 const findRelevantFAQs = (query: string, faqsList: FAQType[], topN: number = 2): FAQType[] => {
   if (!query || faqsList.length === 0) return [];
 
@@ -41,22 +41,28 @@ const findRelevantFAQs = (query: string, faqsList: FAQType[], topN: number = 2):
     const answerLower = faq.answer.toLowerCase();
     const categoryLower = faq.category.toLowerCase();
 
-    // Adiciona o texto alt da imagem ao conteúdo a ser pesquisado
+    // Extração de alt text de imagens (lógica existente)
     const imageUrlRegex = /!\[(.*?)\]\((.*?)\)/g;
     let imageMatch;
     let imageAltTexts = [];
     while ((imageMatch = imageUrlRegex.exec(faq.answer)) !== null) {
       if (imageMatch[1]) {
-        imageAltTexts.push(imageMatch[1].toLowerCase()); // Captura o texto alt
+        imageAltTexts.push(imageMatch[1].toLowerCase());
       }
     }
 
+    // NOVO: Extração de conteúdo de documento
+    const documentContentRegex = /\*\*\*Conteúdo do Documento para IA \(NÃO EDITE\):\*\*\*\n([\s\S]*?)\n\*\*\*FIM DO CONTEÚDO DO DOCUMENTO PARA IA\*\*\*/;
+    const documentMatch = faq.answer.match(documentContentRegex);
+    const documentTextContent = documentMatch ? documentMatch[1].toLowerCase() : '';
+
     queryLower.forEach(word => {
       if (questionLower.includes(word)) score += 2;
-      if (answerLower.includes(word)) score += 1;
+      if (answerLower.includes(word)) score += 1; // Já inclui o texto do documento aqui
       if (categoryLower.includes(word)) score += 0.5;
-      // Novo: Aumenta a pontuação se a palavra-chave estiver no texto alt da imagem
       if (imageAltTexts.some(altText => altText.includes(word))) score += 1.5;
+      // NOVO: Aumenta a pontuação se a palavra-chave estiver no conteúdo do documento
+      if (documentTextContent.includes(word)) score += 3; // Maior peso para conteúdo de documento
     });
     return { faq, score };
   });

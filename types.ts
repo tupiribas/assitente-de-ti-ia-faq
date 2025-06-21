@@ -3,6 +3,8 @@ export interface FAQ {
   question: string;
   answer: string;
   category: string;
+  documentUrl?: string; // Opcional: URL onde o documento original pode ser acessado
+  documentText?: string;
 }
 
 export interface ChatMessage {
