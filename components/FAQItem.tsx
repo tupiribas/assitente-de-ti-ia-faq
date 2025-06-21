@@ -14,7 +14,7 @@ interface FAQItemProps {
 }
 
 // NOVO: Componente renderizador customizado para links em Markdown
-const LinkRenderer = (props: any) => {
+export const LinkRenderer = (props: any) => {
   // Verifica se o link é para um arquivo que deve ser baixado/visualizado
   // Assumimos que links de documentos/imagens estarão em /uploads
   const isAssetLink = props.href && props.href.startsWith('/uploads/');

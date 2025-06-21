@@ -83,7 +83,10 @@ const uploadFAQAsset = multer({
 
 // Configuração do Multer para lidar com imagens no chat (armazenamento temporário em memória)
 const storageChatImage = multer.memoryStorage();
-const uploadChatImage = multer({ storage: storageChatImage });
+const uploadChatImage = multer({
+    storage: storageChatImage,
+    limits: { fileSize: 5 * 1024 * 1024 } // Exemplo: limite de 5MB. Ajuste conforme necessidade.
+});
 
 
 // Middlewares
@@ -186,7 +189,10 @@ async function extractTextFromPdf(filePath) {
     try {
         const dataBuffer = await fs.readFile(filePath);
         const data = await pdf(dataBuffer);
-        return data.text;
+        // NOVO: Limpeza básica do texto
+        let cleanedText = data.text.replace(/[\uFFFD]/g, ''); // Remove o caractere de substituição (diamantes)
+        cleanedText = cleanedText.replace(/\s+/g, ' ').trim(); // Normaliza múltiplos espaços e quebras de linha
+        return cleanedText;
     } catch (error) {
         console.error(`Erro ao extrair texto do PDF ${filePath}:`, error);
         throw new Error('Falha ao extrair texto do PDF.');
@@ -197,7 +203,10 @@ async function extractTextFromPdf(filePath) {
 async function extractTextFromDocx(filePath) {
     try {
         const result = await mammoth.extractRawText({ path: filePath });
-        return result.value; // O texto extraído
+        // NOVO: Limpeza básica do texto
+        let cleanedText = result.value.replace(/[\uFFFD]/g, ''); // Remove o caractere de substituição (diamantes)
+        cleanedText = cleanedText.replace(/\s+/g, ' ').trim(); // Normaliza múltiplos espaços e quebras de linha
+        return cleanedText;
     } catch (error) {
         console.error(`Erro ao extrair texto do DOCX ${filePath}:`, error);
         throw new Error('Falha ao extrair texto do DOCX.');
@@ -208,7 +217,10 @@ async function extractTextFromDocx(filePath) {
 async function extractTextFromTxt(filePath) {
     try {
         const data = await fs.readFile(filePath, 'utf8');
-        return data;
+        // NOVO: Limpeza básica do texto
+        let cleanedText = data.replace(/[\uFFFD]/g, ''); // Remove o caractere de substituição (diamantes)
+        cleanedText = cleanedText.replace(/\s+/g, ' ').trim(); // Normaliza múltiplos espaços e quebras de linha
+        return cleanedText;
     } catch (error) {
         console.error(`Erro ao extrair texto do TXT ${filePath}:`, error);
         throw new Error('Falha ao extrair texto do TXT.');
@@ -378,14 +390,20 @@ app.put('/api/faqs/category/rename', async (req, res) => {
 app.post('/api/ai-chat', uploadChatImage.single('image'), async (req, res) => {
     // ... verificações de horário e rate limiting ...
 
-    try {
-        const { message, history, relevantFAQsContext } = req.body; // 'relevantFAQsContext' já está sendo extraído
-        const imageFile = req.file;
+    const { message, history, relevantFAQsContext } = req.body;
+    const imageFile = req.file;
 
-        const formattedHistory = history ? JSON.parse(history).map((msg) => ({
-            role: msg.sender === 'user' ? 'user' : 'model',
-            parts: [{ text: msg.text }]
-        })) : [];
+    // MODIFICADO: Garante que history seja sempre uma string JSON válida antes de parsear
+    let formattedHistory = [];
+    try {
+        if (typeof history === 'string' && history.trim() !== '') {
+            formattedHistory = JSON.parse(history).map((msg) => ({
+                role: msg.sender === 'user' ? 'user' : 'model',
+                parts: [{ text: msg.text }]
+            }));
+        } else {
+            formattedHistory = []; // Se history não for uma string ou estiver vazio, inicializa como array vazio
+        }
 
         const contentParts = [];
 
