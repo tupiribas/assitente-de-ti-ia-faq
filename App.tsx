@@ -108,21 +108,28 @@ const AppContent: React.FC = () => {
     }
   }, []);
 
-  // Lida com todas as ações de FAQ (usada por AIAssistantSection e FAQSection)
   const handleFaqAction = useCallback(async (
     action: 'add' | 'update' | 'delete' | 'deleteCategory' | 'renameCategory',
-    faqData: SuggestedFAQProposal
+    faqData: SuggestedFAQProposal // Este faqData agora tem imageUrl e documentUrl
   ): Promise<string | void> => { // Tipo de retorno agora é Promise<string | void>
     try {
+      // Removemos a variável 'result' e as chamadas 'setFaqs' daqui
+      // A atualização da lista de FAQs no estado será feita por fetchFaqs() após esta função
+
       if (action === 'add') {
-        // Não precisamos do retorno de faqService.saveFAQs para atualizar o estado aqui.
-        // setFaqs será feito por fetchFaqs() após a ação.
-        await faqService.saveFAQs(faqData as Omit<FAQType, 'id'>);
+        await faqService.saveFAQs({
+          question: faqData.question!,
+          answer: faqData.answer!,
+          category: faqData.category!,
+          imageUrl: faqData.imageUrl,
+          documentUrl: faqData.documentUrl,
+          documentText: faqData.documentUrl ? (faqData.answer || "").split('***Conteúdo do Documento para IA (NÃO EDITE):***')[1]?.split('***FIM DO CONTEÚDO DO DOCUMENTO PARA IA***')[0]?.trim() || undefined : undefined
+        });
         return; // Retorna void para 'add'
       } else if (action === 'update') {
         if (!faqData.id) throw new Error("ID do FAQ é obrigatório para atualização.");
 
-        // Lógica para remover imagens antigas
+        // Lógica para remover imagens antigas se o FAQ for atualizado e as imagens forem removidas do texto
         const oldFaq = faqs.find(f => f.id === faqData.id);
         if (oldFaq && oldFaq.answer && faqData.answer !== undefined) {
           const oldImageUrls = extractImageUrlsFromMarkdown(oldFaq.answer);
@@ -146,7 +153,16 @@ const AppContent: React.FC = () => {
             }
           }
         }
-        await faqService.updateFAQ(faqData as FAQType);
+
+        await faqService.updateFAQ({
+          id: faqData.id,
+          question: faqData.question!,
+          answer: faqData.answer!,
+          category: faqData.category!,
+          imageUrl: faqData.imageUrl,
+          documentUrl: faqData.documentUrl,
+          documentText: faqData.documentUrl ? (faqData.answer || "").split('***Conteúdo do Documento para IA (NÃO EDITE):***')[1]?.split('***FIM DO CONTEÚDO DO DOCUMENTO PARA IA***')[0]?.trim() || undefined : undefined
+        } as FAQType);
         return; // Retorna void para 'update'
       } else if (action === 'delete') {
         if (!faqData.id) throw new Error("ID do FAQ é obrigatório para exclusão.");
@@ -179,8 +195,6 @@ const AppContent: React.FC = () => {
         return "FAQ excluído com sucesso!"; // Retorna string para 'delete'
       } else if (action === 'deleteCategory') {
         if (!faqData.categoryName) throw new Error("Nome da categoria é obrigatório para exclusão por categoria.");
-        // Remova a lógica de deletar imagens por categoria aqui, se quiser que ela seja feita apenas pelo backend.
-        // O backend deve cuidar da limpeza dos arquivos associados.
         const successMessage = await faqService.deleteFAQsByCategory(faqData.categoryName);
         return successMessage; // Retorna string para 'deleteCategory'
       } else if (action === 'renameCategory') {
@@ -195,7 +209,8 @@ const AppContent: React.FC = () => {
       console.error(`Erro ao ${action} FAQ no App:`, error);
       throw error;
     }
-  }, [faqs]); // 'faqs' ainda é dependência por causa do `faqs.find` e `extractImageUrlsFromMarkdown` no delete/update.
+  }, [faqs]);
+
   // NOVO: Função para recarregar os FAQs do servidor
   const fetchFaqs = useCallback(async () => {
     setLoadingFaqs(true);

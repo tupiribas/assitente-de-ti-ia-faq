@@ -95,3 +95,9 @@ export const InformationCircleIcon: React.FC<IconProps> = ({ className }) => (
     <path strokeLinecap="round" strokeLinejoin="round" d="M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12v-.008z" />
   </svg>
 );
+
+export const NoImageIcon: React.FC<IconProps> = ({ className }) => (
+  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={`w-6 h-6 ${className}`}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 15.75l1.5 1.5.356-.356A4.5 4.5 0 009.557 18h2.292a4.5 4.5 0 004.29-2.203l.111-.133.296-.355A4.5 4.5 0 0021.75 12V8.25m0 0h-3.879a1.125 1.125 0 01-.976-.642L16.3 4.757A1.125 1.125 0 0015.322 4.125H8.773c-.57 0-1.059.387-1.192.924L5.617 7.03c-.392.656-.164 1.447.387 1.776l.128.097H16.5M18 12a2.25 2.25 0 100 4.5 2.25 2.25 0 000-4.5zM2.25 2.25l19.5 19.5" />
+  </svg>
+);

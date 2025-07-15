@@ -199,6 +199,23 @@ async function extractTextFromPdf(filePath) {
     }
 }
 
+const saveChatAssetToDisk = async (fileBuffer, originalname, mimetype) => {
+    return new Promise(async (resolve, reject) => {
+        try {
+            await fs.mkdir(UPLOADS_DIR, { recursive: true }).catch(console.error);
+            const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+            const fileExtension = path.extname(originalname);
+            const filename = `chat-asset-${uniqueSuffix}${fileExtension}`; // Nome mais genérico para chat assets
+            const filePath = path.join(UPLOADS_DIR, filename);
+
+            await fs.writeFile(filePath, fileBuffer);
+            resolve({ fileUrl: `${UPLOADS_SERVE_PATH}/${filename}`, filename: filename });
+        } catch (error) {
+            reject(error);
+        }
+    });
+};
+
 // Função para extrair texto de um DOCX
 async function extractTextFromDocx(filePath) {
     try {
@@ -384,54 +401,60 @@ app.put('/api/faqs/category/rename', async (req, res) => {
     }
 });
 
-
-// Rota de proxy para o Assistente de IA com controle de acesso
-// Adicionado `uploadChatImage.single('image')` para lidar com upload de imagens no chat
 app.post('/api/ai-chat', uploadChatImage.single('image'), async (req, res) => {
-    // ... verificações de horário e rate limiting ...
+    // ... (verificações de horário e rate limiting existentes)
 
-    const { message, history, relevantFAQsContext } = req.body;
-    const imageFile = req.file;
-
-    // MODIFICADO: Garante que history seja sempre uma string JSON válida antes de parsear
-    let formattedHistory = [];
     try {
-        if (typeof history === 'string' && history.trim() !== '') {
-            formattedHistory = JSON.parse(history).map((msg) => ({
-                role: msg.sender === 'user' ? 'user' : 'model',
-                parts: [{ text: msg.text }]
-            }));
-        } else {
-            formattedHistory = []; // Se history não for uma string ou estiver vazio, inicializa como array vazio
+        const { message, history, relevantFAQsContext } = req.body;
+        const imageFile = req.file; // Este é o buffer da imagem do Multer memoryStorage
+
+        let currentAssetFileUrl = null; // Para armazenar a URL da imagem/documento atual
+
+        // NOVO: Se houver arquivo (imagem), salve-o em disco e obtenha a URL persistente
+        if (imageFile) {
+            // Reutiliza a lógica de salvamento para chat assets
+            const savedAssetInfo = await saveChatAssetToDisk(imageFile.buffer, imageFile.originalname, imageFile.mimetype);
+            currentAssetFileUrl = savedAssetInfo.fileUrl;
+            console.log("Server - Chat asset salvo em:", currentAssetFileUrl);
+        }
+
+        let formattedHistory = [];
+        try {
+            if (typeof history === 'string' && history.trim() !== '') {
+                formattedHistory = JSON.parse(history).map((msg) => ({
+                    role: msg.sender === 'user' ? 'user' : 'model',
+                    parts: [{ text: msg.text }]
+                }));
+            } else {
+                formattedHistory = [];
+            }
+        } catch (e) {
+            console.error("Erro ao parsear histórico do chat:", e);
+            formattedHistory = [];
         }
 
         const contentParts = [];
 
-        // MODIFICADO: Adiciona o relevantFAQsContext ANTES da mensagem do usuário
-        // Isso garante que o contexto seja processado primeiro pelo modelo.
+        // Adicione o relevantFAQsContext que vem do frontend
         if (relevantFAQsContext) {
             contentParts.push({ text: relevantFAQsContext });
         }
 
-        // Adiciona a mensagem do usuário
-        if (message) {
-            contentParts.push({ text: message });
+        // NOVO: Adicione a URL do arquivo atual (imagem) ao contexto textual para a IA
+        let userMessageText = message || "";
+        if (currentAssetFileUrl) {
+            userMessageText += `\n\n[ARQUIVO_ANEXADO:${currentAssetFileUrl}]`;
         }
+        contentParts.push({ text: userMessageText });
 
-        // Se houver imagem, adiciona-a como parte 'inlineData'
+        // Mantenha o inlineData para o processamento de visão da IA na *requisição atual*
+        // A IA verá o [USER_ASSET_URL:...] no texto E a imagem binária.
         if (imageFile) {
-            if (!imageFile.buffer || imageFile.buffer.length === 0) {
-                console.error("Erro: Buffer da imagem está vazio ou inválido!");
-                return res.status(400).json({ message: "Arquivo de imagem enviado está vazio ou corrompido." });
-            }
-
             const imageBase64 = imageFile.buffer.toString('base64');
-
             let normalizedMimeType = imageFile.mimetype;
             if (normalizedMimeType === 'image/jpg') {
                 normalizedMimeType = 'image/jpeg';
             }
-
             contentParts.push({
                 inlineData: {
                     data: imageBase64,
@@ -448,7 +471,7 @@ app.post('/api/ai-chat', uploadChatImage.single('image'), async (req, res) => {
 
         const model = ai.getGenerativeModel({
             model: GEMINI_MODEL_NAME,
-            systemInstruction: { parts: [{ text: AI_SYSTEM_INSTRUCTION }] }, // A instrução está aqui!
+            systemInstruction: { parts: [{ text: AI_SYSTEM_INSTRUCTION }] },
         });
 
         const chatSession = model.startChat({
@@ -464,13 +487,13 @@ app.post('/api/ai-chat', uploadChatImage.single('image'), async (req, res) => {
         const result = await chatSession.sendMessage(contentParts);
         const aiResponseText = result.response.text();
 
-        res.json({ response: aiResponseText });
+        // MODIFICADO: Retorna userAssetUrl para o frontend
+        res.json({ response: aiResponseText, userAssetUrl: currentAssetFileUrl });
     } catch (error) {
         console.error("Erro ao chamar API Gemini via proxy:", error);
-        if (error instanceof Error) {
-            if (error.message && error.message.includes('API key not valid')) {
-                return res.status(500).json({ message: "Erro de autenticação da API Gemini. Verifique a chave." });
-            }
+        // Se o erro for por tamanho de arquivo, o Multer pode emitir um erro antes
+        if (error.code === 'LIMIT_FILE_SIZE') {
+            return res.status(413).json({ message: `Arquivo muito grande. Limite: ${multerLimits.fileSize / (1024 * 1024)}MB.` });
         }
         res.status(500).json({ message: `Erro ao processar sua solicitação de IA: ${error.message || 'Erro desconhecido.'}` });
     }

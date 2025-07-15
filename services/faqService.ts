@@ -1,4 +1,3 @@
-// assistente-de-ti/services/faqService.ts
 import { FAQ } from '../types';
 
 // ** IMPORTANTE: DEVE SER UM CAMINHO RELATIVO para que o proxy do Vite atue **
@@ -19,14 +18,14 @@ const faqService = {
     }
   },
 
-  saveFAQs: async (newFaqData: Omit<FAQ, 'id'> & { documentUrl?: string; documentText?: string }): Promise<FAQ> => {
+  saveFAQs: async (newFaqData: Omit<FAQ, 'id'> & { imageUrl?: string; documentUrl?: string; documentText?: string }): Promise<FAQ> => {
     try {
       const response = await fetch(API_BASE_URL, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(newFaqData),
+        body: JSON.stringify(newFaqData), // newFaqData será serializado e enviado com todos os campos
       });
       if (!response.ok) {
         const errorBody = await response.json();
@@ -41,15 +40,14 @@ const faqService = {
     }
   },
 
-  updateFAQ: async (updatedFaq: FAQ & { documentUrl?: string; documentText?: string }): Promise<FAQ> => {
+  updateFAQ: async (updatedFaq: FAQ & { imageUrl?: string; documentUrl?: string; documentText?: string }): Promise<FAQ> => {
     try {
-      // Corrigido: Use backticks (crases) e a sintaxe correta para interpolação ${}.
       const response = await fetch(`${API_BASE_URL}/${updatedFaq.id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(updatedFaq),
+        body: JSON.stringify(updatedFaq), // updatedFaq será serializado e enviado com todos os campos
       });
       if (!response.ok) {
         const errorBody = await response.json();

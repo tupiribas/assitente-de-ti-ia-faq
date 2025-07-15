@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { FAQ } from '../types';
-import { ChevronDownIcon, ChevronUpIcon, PencilIcon, TrashIcon } from './Icons';
+import { ChevronDownIcon, ChevronUpIcon, PencilIcon, TrashIcon, NoImageIcon } from './Icons';
 import ReactMarkdown from 'react-markdown'; // Importado para renderizar Markdown
 
 interface FAQItemProps {
@@ -47,8 +47,16 @@ const FAQItem: React.FC<FAQItemProps> = ({ faq, isExpanded, onToggle, onEdit, on
         aria-expanded={isExpanded}
       >
         <span className="font-medium text-base">{faq.question}</span>
-        {isExpanded ? <ChevronUpIcon className="w-5 h-5 text-orange-600" /> : <ChevronDownIcon className="w-5 h-5 text-slate-500" />}
+
+        <div className="flex items-center space-x-2"> {/* NOVO: Wrapper para o ícone de anexo e o chevron */}
+          {/* Verifica se o FAQ tem attachments (imageUrl ou documentUrl) */}
+          {!faq.imageUrl && !faq.documentUrl && ( // NOVO: Se não tiver imagem nem documento
+            <NoImageIcon className="w-5 h-5 text-slate-400" aria-label="Sem anexos visuais" />
+          )}
+          {isExpanded ? <ChevronUpIcon className="w-5 h-5 text-orange-600" /> : <ChevronDownIcon className="w-5 h-5 text-slate-500" />}
+        </div>
       </button>
+
       {isExpanded && (
         <div className="p-4 border-t border-slate-200 bg-slate-50">
           {/* Contêiner flex para alinhamento da resposta e botões */}

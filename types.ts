@@ -3,6 +3,7 @@ export interface FAQ {
   question: string;
   answer: string;
   category: string;
+  imageUrl?: string;
   documentUrl?: string; // Opcional: URL onde o documento original pode ser acessado
   documentText?: string;
 }

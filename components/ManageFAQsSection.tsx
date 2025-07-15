@@ -130,12 +130,12 @@ const ManageFAQsSection: React.FC<ManageFAQsSectionProps> = ({ onAddFAQ, faqToEd
         question,
         answer,
         category,
-        documentUrl: uploadedAssetUrl || undefined, // Inclui a URL do documento/imagem se existir
-        documentText: uploadedAssetText || undefined, // Inclui o texto extraído se existir
+        documentUrl: uploadedAssetUrl || undefined,
+        documentText: uploadedAssetText || undefined,
       };
 
       if (faqToEdit) { // Se for modo de edição
-        await onSaveEditedFAQ({ ...faqDataToSave, id: faqToEdit.id }); // Passe o ID para edição
+        await onSaveEditedFAQ({ ...faqDataToSave, id: faqToEdit.id });
         setSuccessMessage('FAQ atualizado com sucesso!');
       } else { // Se for modo de criação
         await onAddFAQ(faqDataToSave);
