@@ -3,6 +3,14 @@ import { FAQ } from '../types';
 // ** IMPORTANTE: DEVE SER UM CAMINHO RELATIVO para que o proxy do Vite atue **
 const API_BASE_URL = '/api/faqs';
 
+// Helper para obter o ID do usuário anônimo
+const getAnonymousUserId = () => {
+  if (typeof window !== 'undefined' && window.localStorage) {
+    return localStorage.getItem('anonymousUserId') || 'unknown-user';
+  }
+  return 'server-side-operation'; // Para casos onde o código é executado no servidor
+};
+
 const faqService = {
   loadFAQs: async (): Promise<FAQ[]> => {
     try {
@@ -20,12 +28,14 @@ const faqService = {
 
   saveFAQs: async (newFaqData: Omit<FAQ, 'id'> & { imageUrl?: string; documentUrl?: string; documentText?: string }): Promise<FAQ> => {
     try {
+      const userId = getAnonymousUserId(); // Obtém o ID
       const response = await fetch(API_BASE_URL, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'X-User-ID': userId, // Envia o ID no cabeçalho customizado
         },
-        body: JSON.stringify(newFaqData), // newFaqData será serializado e enviado com todos os campos
+        body: JSON.stringify(newFaqData),
       });
       if (!response.ok) {
         const errorBody = await response.json();
@@ -42,12 +52,14 @@ const faqService = {
 
   updateFAQ: async (updatedFaq: FAQ & { imageUrl?: string; documentUrl?: string; documentText?: string }): Promise<FAQ> => {
     try {
+      const userId = getAnonymousUserId(); // Obtém o ID
       const response = await fetch(`${API_BASE_URL}/${updatedFaq.id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
+          'X-User-ID': userId, // Envia o ID no cabeçalho customizado
         },
-        body: JSON.stringify(updatedFaq), // updatedFaq será serializado e enviado com todos os campos
+        body: JSON.stringify(updatedFaq),
       });
       if (!response.ok) {
         const errorBody = await response.json();
@@ -62,11 +74,14 @@ const faqService = {
     }
   },
 
-  // Função para excluir um FAQ por ID
   deleteFAQ: async (id: string): Promise<void> => {
     try {
+      const userId = getAnonymousUserId(); // Obtém o ID
       const response = await fetch(`${API_BASE_URL}/${id}`, {
         method: 'DELETE',
+        headers: {
+          'X-User-ID': userId, // Envia o ID no cabeçalho customizado
+        },
       });
       if (!response.ok) {
         const errorBody = await response.text();
@@ -88,8 +103,12 @@ const faqService = {
 
   deleteFAQsByCategory: async (categoryName: string): Promise<string> => {
     try {
+      const userId = getAnonymousUserId(); // Obtém o ID
       const response = await fetch(`${API_BASE_URL}/category/${encodeURIComponent(categoryName)}`, {
         method: 'DELETE',
+        headers: {
+          'X-User-ID': userId, // Envia o ID no cabeçalho customizado
+        },
       });
       if (!response.ok) {
         const errorBody = await response.json();
@@ -106,10 +125,12 @@ const faqService = {
 
   renameCategory: async (oldCategoryName: string, newCategoryName: string): Promise<string> => {
     try {
+      const userId = getAnonymousUserId(); // Obtém o ID
       const response = await fetch(`${API_BASE_URL}/category/rename`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
+          'X-User-ID': userId, // Envia o ID no cabeçalho customizado
         },
         body: JSON.stringify({ oldCategoryName, newCategoryName }),
       });

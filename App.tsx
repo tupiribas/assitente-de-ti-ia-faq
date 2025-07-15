@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { BrowserRouter as Router, Routes, Route, useNavigate, useParams } from 'react-router-dom';
+import { v4 as uuidv4 } from 'uuid';
 import Header from './components/Header';
 import FAQSection from './components/FAQSection';
 import AIAssistantSection from './components/AIAssistantSection';
@@ -95,6 +96,17 @@ const AppContent: React.FC = () => {
     };
     fetchFaqs();
   }, []);
+
+  useEffect(() => {
+    let anonymousUserId = localStorage.getItem('anonymousUserId');
+    if (!anonymousUserId) {
+        anonymousUserId = uuidv4();
+        localStorage.setItem('anonymousUserId', anonymousUserId);
+    }
+    // Você pode armazenar isso em um estado ou contexto se precisar dele em mais lugares.
+    // Por enquanto, o ideal é que os serviços o peguem diretamente do localStorage.
+    console.log("Anonymous User ID:", anonymousUserId); // Para depuração
+}, []);
 
   // Função para adicionar FAQ
   const addFAQ = useCallback(async (newFaqData: Omit<FAQType, 'id'> & { documentUrl?: string; documentText?: string }) => {

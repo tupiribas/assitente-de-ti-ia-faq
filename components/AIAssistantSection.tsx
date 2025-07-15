@@ -117,7 +117,10 @@ const AIAssistantSection: React.FC<AIAssistantSectionProps> = ({ onFaqAction, fa
 
   const handleFAQProposal = (aiResponseText: string): boolean => {
     const proposalRegex = /\[SUGGEST_FAQ_PROPOSAL\](\{.*?\})\[\/SUGGEST_FAQ_PROPOSAL\]/s;
+    const customActionRegex = /\[CUSTOM_ACTION_REQUEST\](\{.*?\})\[\/CUSTOM_ACTION_REQUEST\]/s;
+
     const match = aiResponseText.match(proposalRegex);
+    const customActionMatch = aiResponseText.match(customActionRegex);
 
     if (match && match[1]) {
       try {
@@ -196,7 +199,41 @@ const AIAssistantSection: React.FC<AIAssistantSectionProps> = ({ onFaqAction, fa
         setError("A IA tentou sugerir um FAQ, mas houve um erro no formato da sugestão. O JSON gerado pela IA pode estar malformado. Por favor, ajuste o prompt da IA.");
       }
     }
-    return false;
+    else if (customActionMatch && customActionMatch[1]) {
+      try {
+        const actionProposal: { action: string } = JSON.parse(customActionMatch[1]);
+        if (actionProposal.action === 'view_faq_log') {
+          // Faz a requisição para o log
+          fetch('/api/logs/faq-activity')
+            .then(res => {
+              if (!res.ok) {
+                throw new Error(`Erro ao carregar log: ${res.statusText}`);
+              }
+              return res.text(); // O log é texto puro
+            })
+            .then(logText => {
+              const logMessage: ChatMessageType = {
+                id: 'ai-log-' + Date.now(),
+                text: `**Log de Atividades do FAQ:**\n\n\`\`\`\n${logText}\n\`\`\``, // Formata como bloco de código
+                sender: 'ai',
+                timestamp: new Date(),
+                imagePreviewUrl: undefined
+              };
+              setChatMessages((prevMessages) => [...prevMessages, logMessage]);
+              setError(null);
+            })
+            .catch(err => {
+              console.error("Erro ao carregar log de FAQ:", err);
+              setError(`Não foi possível carregar o log de atividades: ${err.message}`);
+            });
+          return true; // A ação customizada foi tratada
+        }
+      } catch (e) {
+        console.error("Erro ao parsear JSON da ação customizada:", e);
+        setError("A IA tentou disparar uma ação, mas o formato estava inválido.");
+      }
+    }
+    return false; // Nenhuma proposta ou ação customizada tratada
   };
 
   const handleSendMessage = async (inputText: string, imageFile?: File | null) => {
