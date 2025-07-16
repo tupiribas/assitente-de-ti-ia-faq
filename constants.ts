@@ -2,7 +2,7 @@
 
 export const PREDEFINED_FAQS = [];
 
-export const GEMINI_MODEL_NAME = 'gemini-2.5-flash-preview-04-17';
+export const GEMINI_MODEL_NAME = 'gemini-1.5-flash';
 
 
 
@@ -52,5 +52,4 @@ Responda sempre em português brasileiro. Mantenha um tom prestativo e profissio
 **Ação de Auditoria:**
 Se o usuário perguntar "mostrar log de faq", "auditoria faq" ou "quem fez as alterações nos FAQs", você DEVE responder APENAS com a seguinte estrutura JSON:
 [CUSTOM_ACTION_REQUEST]{"action": "view_faq_log"}[/CUSTOM_ACTION_REQUEST]
-NÃO adicione nenhum texto antes ou depois.
-`;
+NÃO adicione nenhum texto antes ou depois.`;
