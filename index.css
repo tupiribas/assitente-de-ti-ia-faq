@@ -4,5 +4,57 @@
 
 /* Seus estilos CSS personalizados abaixo */
 body {
-  font-family: 'Inter', sans-serif; /* Exemplo, se você usa uma fonte */
+  font-family: 'Inter', sans-serif;
 }
+
+/* VVVV INÍCIO DA CORREÇÃO DEFINITIVA VVVV */
+/* Força a aplicação de estilos tipográficos para elementos dentro de .prose */
+/* Isso é uma forma de garantir que o plugin typography tenha precedência. */
+/* Remova ou ajuste o !important se o problema for resolvido e você quiser refinar. */
+.prose h1,
+.prose h2,
+.prose h3,
+.prose h4,
+.prose h5,
+.prose h6,
+.prose p,
+.prose ul,
+.prose ol,
+.prose li,
+.prose a {
+  all: unset !important;
+  /* Reseta estilos anteriores para esses elementos */
+  display: revert !important;
+  /* Restaura a propriedade display correta */
+  font-size: revert !important;
+  /* Restaura o tamanho da fonte padrão do navegador */
+  font-weight: revert !important;
+  /* Restaura o peso da fonte padrão do navegador */
+  margin: revert !important;
+  /* Restaura as margens padrão do navegador */
+  padding: revert !important;
+  /* Restaura o padding padrão do navegador */
+  line-height: revert !important;
+  /* Restaura o line-height padrão do navegador */
+  text-decoration: revert !important;
+  /* Restaura o text-decoration padrão do navegador */
+  color: revert !important;
+  /* Restaura a cor padrão do navegador */
+}
+
+/* Agora, os estilos específicos do tailwind.config.js para .prose (ex: h1, h2, a) */
+/* terão a oportunidade de serem aplicados em seguida. */
+/* Você *ainda precisa* manter os estilos dentro do tailwind.config.js */
+/* O `!important` deve ser usado com cautela, mas é útil para depurar.*/
+/* Para links, você pode precisar ser mais específico para o text-decoration */
+.prose a {
+  text-decoration: none !important;
+  /* Remove o sublinhado em todos os links */
+}
+
+.prose a:hover {
+  text-decoration: underline !important;
+  /* Adiciona o sublinhado no hover */
+}
+
+/* ^^^^ FIM DA CORREÇÃO DEFINITIVA ^^^^ */

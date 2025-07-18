@@ -8,6 +8,7 @@ import ManageFAQsSection from './components/ManageFAQsSection';
 import { FAQ as FAQType } from './types';
 import { faqService } from './services/faqService';
 import { SuggestedFAQProposal } from './components/AIAssistantSection';
+import './index.css';
 
 // Função auxiliar para extrair URLs de imagem de texto Markdown
 const extractImageUrlsFromMarkdown = (markdownText: string): string[] => {
@@ -100,13 +101,13 @@ const AppContent: React.FC = () => {
   useEffect(() => {
     let anonymousUserId = localStorage.getItem('anonymousUserId');
     if (!anonymousUserId) {
-        anonymousUserId = uuidv4();
-        localStorage.setItem('anonymousUserId', anonymousUserId);
+      anonymousUserId = uuidv4();
+      localStorage.setItem('anonymousUserId', anonymousUserId);
     }
     // Você pode armazenar isso em um estado ou contexto se precisar dele em mais lugares.
     // Por enquanto, o ideal é que os serviços o peguem diretamente do localStorage.
     console.log("Anonymous User ID:", anonymousUserId); // Para depuração
-}, []);
+  }, []);
 
   // Função para adicionar FAQ
   const addFAQ = useCallback(async (newFaqData: Omit<FAQType, 'id'> & { documentUrl?: string; documentText?: string }) => {

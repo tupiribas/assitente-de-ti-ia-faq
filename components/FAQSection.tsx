@@ -4,34 +4,46 @@ import React, { useState, useMemo } from 'react';
 import { FAQ } from '../types';
 import FAQItem from './FAQItem';
 import { SearchIcon } from './Icons';
-// ManageFAQsSection não é mais importado aqui, pois não é mais um modal interno.
 
 interface FAQSectionProps {
   faqs: FAQ[];
   onEditFAQ: (faq: FAQ) => void;
   onDeleteFAQ: (id: string) => void;
-  // onAddFAQ não é mais necessário aqui
 }
 
 const FAQSection: React.FC<FAQSectionProps> = ({ faqs, onEditFAQ, onDeleteFAQ }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  // editingFaq e as funções de handleSaveEditedFAQ/handleCancelEdit são removidos
 
   const filteredFAQs = useMemo(() => {
     if (!searchTerm) {
-      return faqs;
+      // VVVV INÍCIO DA CORREÇÃO VVVV
+      return faqs.filter(faq => faq && typeof faq.question === 'string' && typeof faq.answer === 'string' && typeof faq.category === 'string'); // Garante que o FAQ é um objeto válido
+      // ^^^^ FIM DA CORREÇÃO ^^^^
     }
     return faqs.filter(
-      (faq) =>
-        faq.question.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        faq.answer.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        faq.category.toLowerCase().includes(searchTerm.toLowerCase())
+      (faq) => {
+        // VVVV INÍCIO DA CORREÇÃO VVVV
+        if (!faq || typeof faq.question !== 'string' || typeof faq.answer !== 'string' || typeof faq.category !== 'string') {
+          return false; // Ignora FAQs malformados na filtragem
+        }
+        // ^^^^ FIM DA CORREÇÃO ^^^^
+        return (
+          faq.question.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          faq.answer.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          faq.category.toLowerCase().includes(searchTerm.toLowerCase())
+        );
+      }
     );
   }, [searchTerm, faqs]);
 
   const faqsByCategory = useMemo(() => {
     return filteredFAQs.reduce((acc, faq) => {
+      // VVVV INÍCIO DA CORREÇÃO VVVV
+      if (!faq) { // Filtra qualquer FAQ nulo/indefinido que possa ter passado
+        return acc;
+      }
+      // ^^^^ FIM DA CORREÇÃO ^^^^
       if (!acc[faq.category]) {
         acc[faq.category] = [];
       }
@@ -44,17 +56,15 @@ const FAQSection: React.FC<FAQSectionProps> = ({ faqs, onEditFAQ, onDeleteFAQ })
     setExpandedId(expandedId === id ? null : id);
   };
 
-  // Funções de clique em Editar/Excluir permanecem as mesmas, mas as props virão do App.tsx
   const handleEditClick = (faq: FAQ) => {
-    onEditFAQ(faq); // Chama a prop que agora fará a navegação
+    onEditFAQ(faq);
   };
 
   const handleDeleteClick = (id: string) => {
     if (window.confirm("Tem certeza que deseja excluir este FAQ?")) {
-      onDeleteFAQ(id); // Chama a prop
+      onDeleteFAQ(id);
     }
   };
-
 
   return (
     <div className="bg-white p-6 sm:p-8 rounded-lg shadow-xl container mx-auto max-w-4xl">
@@ -77,7 +87,9 @@ const FAQSection: React.FC<FAQSectionProps> = ({ faqs, onEditFAQ, onDeleteFAQ })
           <div key={category} className="mb-8">
             <h3 className="text-xl font-semibold text-orange-700 mb-4 border-b-2 border-orange-200 pb-2">{category}</h3>
             <div className="space-y-3">
-              {categoryFaqs.map((faq) => (
+              {/* VVVV INÍCIO DA CORREÇÃO VVVV */}
+              {categoryFaqs.filter(faq => faq).map((faq) => ( // Filtra items null/undefined antes de mapear
+                // ^^^^ FIM DA CORREÇÃO ^^^^
                 <FAQItem
                   key={faq.id}
                   faq={faq}
@@ -95,8 +107,6 @@ const FAQSection: React.FC<FAQSectionProps> = ({ faqs, onEditFAQ, onDeleteFAQ })
           {searchTerm ? "Nenhum FAQ encontrado para sua busca." : "Nenhum FAQ disponível no momento."}
         </p>
       )}
-
-      {/* O modal de edição (ManageFAQsSection) foi removido daqui e será renderizado por uma rota separada em App.tsx */}
     </div>
   );
 };
