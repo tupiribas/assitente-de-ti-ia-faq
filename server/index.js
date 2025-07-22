@@ -1,54 +1,43 @@
 require('dotenv').config({ path: require('path').resolve(__dirname, '..', '.env.local') });
 
 const express = require('express');
-const fs = require('fs').promises; // Usar fs.promises para async/await
+const fs = require('fs').promises;
 const path = require('path');
 const cors = require('cors');
 const { v4: uuidv4 } = require('uuid');
-// CORRIGIDO: Usar a importação correta para a nova biblioteca @google/generative-ai
 const { GoogleGenerativeAI } = require('@google/generative-ai');
-const multer = require('multer'); // Importa o Multer para lidar com upload de arquivos
-const pdf = require('pdf-parse'); // Para PDFs
-const mammoth = require('mammoth'); // Para DOCX
-const util = require('util'); // Utilitário para promisify
+const multer = require('multer');
+const pdf = require('pdf-parse');
+const mammoth = require('mammoth');
+const util = require('util');
 
-// Importar do diretório de build após compilação.
-// CORRIGIDO: Caminho da importação para 'constants'
 const { GEMINI_MODEL_NAME, AI_SYSTEM_INSTRUCTION } = require('./build/constants');
 
-// Certifique-se de que a API_KEY está disponível como uma variável de ambiente no servidor Fly.io
-// Prefira carregar do process.env.GEMINI_API_KEY. Se não estiver definido, use um valor padrão ou lance um erro.
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 
-// VERIFICAÇÃO CRÍTICA da API Key
 if (!GEMINI_API_KEY || GEMINI_API_KEY.length === 0) {
     console.error("ERRO CRÍTICO: GEMINI_API_KEY não está definida ou está vazia na variável de ambiente.");
     console.error("Por favor, defina a variável de ambiente GEMINI_API_KEY:");
     console.error("  - Localmente: Crie um arquivo .env.local na raiz do projeto com GEMINI_API_KEY=\"SUA_CHAVE\"");
     console.error("  - No Fly.io: Execute flyctl secrets set GEMINI_API_KEY=\"SUA_CHAVE\"");
-    // Não encerre o processo aqui se você quiser que as rotas de FAQ continuem funcionando,
-    // mas o assistente de IA falhará. Para desenvolvimento, é útil encerrar para depuração.
-    // process.exit(1); // Pode ser reativado para garantir que a chave esteja presente.
 }
 
-// Inicializa o cliente GoogleGenerativeAI globalmente
 const ai = new GoogleGenerativeAI(GEMINI_API_KEY);
-
 
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-const FAQS_FILE = path.join('/app/data', 'faqs.json');
-const frontendBuildPath = path.join(__dirname, '..', 'public');
+const IS_PRODUCTION = process.env.NODE_ENV === 'production';
 
-// NOVO: Caminho para o arquivo de log de atividades
-const LOG_FILE = path.join('/app/data', 'faq_activity.log'); //
+const DATA_BASE_DIR = IS_PRODUCTION ? '/app/data' : path.join(__dirname, '..', 'data');
+const UPLOADS_DIR = IS_PRODUCTION ? path.join('/app/data', 'uploads') : path.join(__dirname, '..', 'public', 'uploads');
 
-// CORRIGIDO: Diretório para uploads de imagens e documentos.
-const UPLOADS_DIR = path.join('/app/data', 'uploads');
+const FAQS_FILE = path.join(DATA_BASE_DIR, 'faqs.json');
+const LOG_FILE = path.join(DATA_BASE_DIR, 'faq_activity.log');
 const UPLOADS_SERVE_PATH = '/uploads';
 
-// Configuração do Multer para armazenamento de imagens de FAQ (persistente em disco)
+const frontendBuildPath = path.join(__dirname, '..', 'public');
+
 const storageFAQAssets = multer.diskStorage({
     destination: async (req, file, cb) => {
         await fs.mkdir(UPLOADS_DIR, { recursive: true }).catch(console.error);
@@ -61,16 +50,15 @@ const storageFAQAssets = multer.diskStorage({
     }
 });
 
-// NOVO: Função para filtrar tipos de arquivo permitidos
 const fileFilter = (req, file, cb) => {
     const allowedMimeTypes = [
-        'image/jpeg', 'image/png', 'image/gif', 'image/webp', // Imagens
-        'application/pdf', // PDFs
-        'application/vnd.openxmlformats-officedocument.wordprocessingml.document', // DOCX
-        'text/plain' // TXT
+        'image/jpeg', 'image/png', 'image/gif', 'image/webp',
+        'application/pdf',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'text/plain'
     ];
     if (allowedMimeTypes.includes(file.mimetype)) {
-        cb(null, true); // Aceita o arquivo
+        cb(null, true);
     } else {
         cb(new Error('Tipo de arquivo não permitido. Apenas imagens (JPG, PNG, GIF, WEBP), PDF, DOCX e TXT são suportados.'), false);
     }
@@ -78,34 +66,30 @@ const fileFilter = (req, file, cb) => {
 
 const uploadFAQAsset = multer({
     storage: storageFAQAssets,
-    fileFilter: fileFilter, // Aplica o filtro
-    limits: { fileSize: 10 * 1024 * 1024 } // Limite de 10MB por arquivo (ajuste conforme necessário)
+    fileFilter: fileFilter,
+    limits: { fileSize: 10 * 1024 * 1024 }
 });
 
-// Configuração do Multer para lidar com imagens no chat (armazenamento temporário em memória)
 const storageChatImage = multer.memoryStorage();
 const uploadChatImage = multer({
     storage: storageChatImage,
-    limits: { fileSize: 10 * 1024 * 1024 } // Define um limite de 10MB por arquivo (ajuste se necessário)
+    limits: { fileSize: 10 * 1024 * 1024 }
 });
 
-
-// Middlewares
 app.use(cors());
-app.use(express.json());
+// VVVV REMOVIDO: express.json() para todas as rotas (será adicionado por rota se necessário) VVVV
+// app.use(express.json());
+// ^^^^ FIM DA REMOÇÃO ^^^^
 app.set('trust proxy', true);
 
-// CORRIGIDO: Servir arquivos estáticos do diretório de uploads ANTES das rotas.
 app.use(UPLOADS_SERVE_PATH, express.static(UPLOADS_DIR));
-
-// Servir arquivos estáticos do frontend (geralmente vai para ./public)
 app.use(express.static(frontendBuildPath));
 
-// NOVO: Função para registrar logs de atividades
-const logActivity = async (action, faqId, details, ip, userAgent, userId = 'anonymous') => { //
+const logActivity = async (action, faqId, details, ip, userAgent, userId = 'anonymous') => {
     const timestamp = new Date().toISOString();
     const logEntry = `[${timestamp}] [USER_ID: ${userId}] [IP: ${ip}] [USER_AGENT: ${userAgent}] ACTION: ${action} FAQ_ID: ${faqId} DETAILS: ${JSON.stringify(details)}\n`;
     try {
+        await fs.mkdir(path.dirname(LOG_FILE), { recursive: true }).catch(console.error);
         await fs.appendFile(LOG_FILE, logEntry, 'utf8');
         console.log(`Atividade logada: ${action} - ${faqId}`);
     } catch (error) {
@@ -113,8 +97,7 @@ const logActivity = async (action, faqId, details, ip, userAgent, userId = 'anon
     }
 };
 
-// NOVO: Rota para upload de imagens e documentos
-app.post('/api/upload-asset', uploadFAQAsset.single('file'), async (req, res) => { // 'file' é o nome do campo no formulário
+app.post('/api/upload-asset', uploadFAQAsset.single('file'), async (req, res) => {
     if (!req.file) {
         return res.status(400).json({ message: 'Nenhum arquivo enviado.' });
     }
@@ -130,18 +113,14 @@ app.post('/api/upload-asset', uploadFAQAsset.single('file'), async (req, res) =>
         } else if (req.file.mimetype === 'text/plain') {
             extractedText = await extractTextFromTxt(req.file.path);
         }
-        // Para imagens, extractedText permanece null, o que é o comportamento desejado.
-        // O `imageURL` é a URL direta para o arquivo.
-        // O `fileUrl` será a URL do documento se for um documento.
 
         res.status(200).json({
-            fileUrl: fileUrl, // URL do arquivo original (imagem ou documento)
-            extractedText: extractedText // Texto extraído (null para imagens)
+            fileUrl: fileUrl,
+            extractedText: extractedText
         });
 
     } catch (error) {
         console.error(`Erro no processamento do arquivo ${req.file.filename}:`, error);
-        // Tenta remover o arquivo se a extração falhar para evitar lixo
         try {
             await fs.unlink(req.file.path);
         } catch (unlinkError) {
@@ -151,14 +130,13 @@ app.post('/api/upload-asset', uploadFAQAsset.single('file'), async (req, res) =>
     }
 });
 
-// Rota DELETE para remover uma imagem de FAQ pelo nome do arquivo
 app.delete('/api/uploads/:filename', async (req, res) => {
     const { filename } = req.params;
     const filePath = path.join(UPLOADS_DIR, filename);
 
     try {
-        await fs.access(filePath); // Verifica se o arquivo existe
-        await fs.unlink(filePath); // Remove o arquivo
+        await fs.access(filePath);
+        await fs.unlink(filePath);
         console.log(`Arquivo ${filename} removido do servidor.`);
         res.status(200).json({ message: `Arquivo ${filename} removido com sucesso.` });
     } catch (error) {
@@ -170,8 +148,6 @@ app.delete('/api/uploads/:filename', async (req, res) => {
     }
 });
 
-
-// Função para carregar FAQs do arquivo
 const loadFaqs = async () => {
     try {
         await fs.access(FAQS_FILE);
@@ -187,10 +163,9 @@ const loadFaqs = async () => {
     }
 };
 
-// Função para salvar FAQs no arquivo
 const saveFaqs = async (faqs) => {
     try {
-        await fs.mkdir(path.dirname(FAQS_FILE), { recursive: true });
+        await fs.mkdir(path.dirname(FAQS_FILE), { recursive: true }).catch(console.error);
         await fs.writeFile(FAQS_FILE, JSON.stringify(faqs, null, 2), 'utf8');
         console.log('FAQs salvos com sucesso.');
     } catch (error) {
@@ -198,14 +173,13 @@ const saveFaqs = async (faqs) => {
         throw new Error('Falha ao salvar FAQs.');
     }
 };
-// Função para extrair texto de um PDF
+
 async function extractTextFromPdf(filePath) {
     try {
         const dataBuffer = await fs.readFile(filePath);
         const data = await pdf(dataBuffer);
-        // NOVO: Limpeza básica do texto
-        let cleanedText = data.text.replace(/[\uFFFD]/g, ''); // Remove o caractere de substituição (diamantes)
-        cleanedText = cleanedText.replace(/\s+/g, ' ').trim(); // Normaliza múltiplos espaços e quebras de linha
+        let cleanedText = data.text.replace(/[\uFFFD]/g, '');
+        cleanedText = cleanedText.replace(/\s+/g, ' ').trim();
         return cleanedText;
     } catch (error) {
         console.error(`Erro ao extrair texto do PDF ${filePath}:`, error);
@@ -219,7 +193,7 @@ const saveChatAssetToDisk = async (fileBuffer, originalname, mimetype) => {
             await fs.mkdir(UPLOADS_DIR, { recursive: true }).catch(console.error);
             const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
             const fileExtension = path.extname(originalname);
-            const filename = `chat-asset-${uniqueSuffix}${fileExtension}`; // Nome mais genérico para chat assets
+            const filename = `chat-asset-${uniqueSuffix}${fileExtension}`;
             const filePath = path.join(UPLOADS_DIR, filename);
 
             await fs.writeFile(filePath, fileBuffer);
@@ -230,13 +204,11 @@ const saveChatAssetToDisk = async (fileBuffer, originalname, mimetype) => {
     });
 };
 
-// Função para extrair texto de um DOCX
 async function extractTextFromDocx(filePath) {
     try {
         const result = await mammoth.extractRawText({ path: filePath });
-        // NOVO: Limpeza básica do texto
-        let cleanedText = result.value.replace(/[\uFFFD]/g, ''); // Remove o caractere de substituição (diamantes)
-        cleanedText = cleanedText.replace(/\s+/g, ' ').trim(); // Normaliza múltiplos espaços e quebras de linha
+        let cleanedText = result.value.replace(/[\uFFFD]/g, '');
+        cleanedText = cleanedText.replace(/\s+/g, ' ').trim();
         return cleanedText;
     } catch (error) {
         console.error(`Erro ao extrair texto do DOCX ${filePath}:`, error);
@@ -244,13 +216,11 @@ async function extractTextFromDocx(filePath) {
     }
 }
 
-// Função para extrair texto de um TXT
 async function extractTextFromTxt(filePath) {
     try {
         const data = await fs.readFile(filePath, 'utf8');
-        // NOVO: Limpeza básica do texto
-        let cleanedText = data.replace(/[\uFFFD]/g, ''); // Remove o caractere de substituição (diamantes)
-        cleanedText = cleanedText.replace(/\s+/g, ' ').trim(); // Normaliza múltiplos espaços e quebras de linha
+        let cleanedText = data.replace(/[\uFFFD]/g, '');
+        cleanedText = cleanedText.replace(/\s+/g, ' ').trim();
         return cleanedText;
     } catch (error) {
         console.error(`Erro ao extrair texto do TXT ${filePath}:`, error);
@@ -258,20 +228,10 @@ async function extractTextFromTxt(filePath) {
     }
 }
 
-// Função para verificar se a hora atual está dentro do horário de funcionamento
 const isServiceTime = () => {
-    // Para testar, retorne true para desabilitar a verificação de horário.
-    return true; // Temporariamente para depuração
-    // const now = new Date();
-    // const hour = now.getHours();
-    // const minute = now.getMinutes();
-    // // Horário de Salvador (GMT-3)
-    // const isMorning = (hour >= 7 && hour < 12);
-    // const isAfternoon = (hour > 13 || (hour === 13 && minute >= 11)) && hour < 18;
-    // return isMorning || isAfternoon;
+    return true;
 };
 
-// Exemplo de Rate Limiting Básico em Memória
 const requestCounts = new Map();
 const MAX_REQUESTS_PER_HOUR = 50;
 const RESET_INTERVAL_MS = 60 * 60 * 1000;
@@ -281,8 +241,6 @@ setInterval(() => {
     console.log("Contadores de requisições de IA resetados.");
 }, RESET_INTERVAL_MS);
 
-
-// Rota GET para obter todos os FAQs
 app.get('/api/faqs', async (req, res) => {
     try {
         const faqs = await loadFaqs();
@@ -292,20 +250,39 @@ app.get('/api/faqs', async (req, res) => {
     }
 });
 
-// Rota POST para adicionar um novo FAQ
-app.post('/api/faqs', async (req, res) => {
-    // NOVO: Log do corpo da requisição para depuração
-    console.log('Recebendo requisição POST /api/faqs. req.body:', req.body); //
+// VVVV CORREÇÃO AQUI: Usa multer.none() para POST (analisa FormData) VVVV
+app.post('/api/faqs', multer().none(), async (req, res) => {
+    console.log('Backend - FULL req.body antes de desestruturar (POST):', JSON.stringify(req.body, null, 2));
 
-    // NOVO: Verificação para garantir que req.body não é undefined
-    if (!req.body) { //
+    if (!req.body) {
         return res.status(400).json({ message: 'Corpo da requisição ausente ou malformado. Verifique o Content-Type.' });
     }
 
-    const { question, answer, category, documentUrl, documentText } = req.body; // NOVO: Obtenha documentUrl e documentText
-    const userIp = req.ip; // Obtém o IP do cliente
-    const userAgent = req.headers['user-agent']; // Obtém o User-Agent
-    const userId = req.headers['x-user-id'] || 'anonymous'; // Adicione um cabeçalho customizado se usar ID de frontend
+    // Acessa os campos diretamente de req.body (parseado por multer.none())
+    const question = req.body.question;
+    const answer = req.body.answer;
+    const category = req.body.category;
+    const documentText = req.body.documentText || undefined;
+    const _attachmentsData = req.body._attachmentsData; // Campo string com JSON de attachments
+
+    let parsedAttachments;
+    if (typeof _attachmentsData === 'string') {
+        try {
+            parsedAttachments = JSON.parse(_attachmentsData);
+        } catch (e) {
+            console.error('Erro ao parsear _attachmentsData (POST):', e);
+            parsedAttachments = [];
+        }
+    } else {
+        parsedAttachments = [];
+    }
+
+    console.log('Dados do FAQ recebidos no backend (POST):', { question, answer, category, _attachmentsData, documentText });
+    console.log('Backend POST - parsedAttachments (garantido array):', parsedAttachments);
+
+    const userIp = req.ip;
+    const userAgent = req.headers['user-agent'];
+    const userId = req.headers['x-user-id'] || 'anonymous';
 
     if (!question || !answer || !category) {
         return res.status(400).json({ message: 'Todos os campos (Pergunta, Resposta, Categoria) são obrigatórios.' });
@@ -313,26 +290,58 @@ app.post('/api/faqs', async (req, res) => {
 
     try {
         const faqs = await loadFaqs();
-        const newFaq = { id: uuidv4(), question, answer, category, documentUrl, documentText }; // NOVO: Inclua documentUrl e documentText
+        const newFaq = { id: uuidv4(), question, answer, category, attachments: parsedAttachments, documentText };
         faqs.unshift(newFaq);
         await saveFaqs(faqs);
 
-        // Log da atividade
-        await logActivity('ADD_FAQ', newFaq.id, { question, category }, userIp, userAgent, userId); //
+        await logActivity('ADD_FAQ', newFaq.id, { question, category, attachments: parsedAttachments }, userIp, userAgent, userId);
 
-        res.status(201).json(newFaq);
+        const reloadedFaqs = await loadFaqs();
+        const savedFaq = reloadedFaqs.find(f => f.id === newFaq.id);
+
+        if (savedFaq) {
+            res.status(201).json(savedFaq);
+        } else {
+            console.error(`Erro: FAQ ${newFaq.id} não encontrado após recarga do disco.`);
+            res.status(500).json({ message: 'Erro interno ao adicionar e verificar FAQ.' });
+        }
+
     } catch (error) {
+        console.error(`Erro ao adicionar FAQ:`, error);
         res.status(500).json({ message: 'Erro ao adicionar FAQ.' });
     }
 });
 
-// Rota PUT para atualizar um FAQ existente
-app.put('/api/faqs/:id', async (req, res) => {
+// VVVV CORREÇÃO AQUI: Usa multer.none() para PUT (analisa FormData) VVVV
+app.put('/api/faqs/:id', multer().none(), async (req, res) => {
+    console.log('Backend - FULL req.body antes de desestruturar (PUT):', JSON.stringify(req.body, null, 2));
+
     const { id } = req.params;
-    const { question, answer, category, documentUrl, documentText } = req.body; // NOVO: Obtenha documentUrl e documentText
-    const userIp = req.ip; // Obtém o IP do cliente
-    const userAgent = req.headers['user-agent']; // Obtém o User-Agent
-    const userId = req.headers['x-user-id'] || 'anonymous'; // Adicione um cabeçalho customizado se usar ID de frontend
+    // Acessa os campos diretamente de req.body (parseado por multer.none())
+    const question = req.body.question;
+    const answer = req.body.answer;
+    const category = req.body.category;
+    const documentText = req.body.documentText || undefined;
+    const _attachmentsData = req.body._attachmentsData; // Campo string com JSON de attachments
+
+    let parsedAttachments;
+    if (typeof _attachmentsData === 'string') {
+        try {
+            parsedAttachments = JSON.parse(_attachmentsData);
+        } catch (e) {
+            console.error('Erro ao parsear _attachmentsData (PUT):', e); // ESTE LOG É CRÍTICO
+            parsedAttachments = [];
+        }
+    } else {
+        parsedAttachments = [];
+    }
+
+    console.log('Backend - _attachmentsData recebido (frontend enviou):', _attachmentsData); // Ajusta log para _attachmentsData
+    console.log('Backend - parsedAttachments (garantido array):', parsedAttachments); // NOVO LOG
+
+    const userIp = req.ip;
+    const userAgent = req.headers['user-agent'];
+    const userId = req.headers['x-user-id'] || 'anonymous';
 
     if (!question || !answer || !category) {
         return res.status(400).json({ message: 'Todos os campos (Pergunta, Resposta e Categoria) são obrigatórios para atualização.' });
@@ -340,34 +349,48 @@ app.put('/api/faqs/:id', async (req, res) => {
 
     try {
         let faqs = await loadFaqs();
+        console.log('Backend - FAQs carregados do disco (antes da modificação):', faqs);
+
         const faqIndex = faqs.findIndex(faq => faq.id === id);
 
         if (faqIndex === -1) {
+            console.error('Backend - Erro: FAQ não encontrado para atualização:', id);
             return res.status(404).json({ message: `FAQ com ID ${id} não encontrado.` });
         }
 
-        // NOVO: Inclua documentUrl e documentText na atualização
-        const oldFaq = { ...faqs[faqIndex] }; // Copia o FAQ antigo para log
-        faqs[faqIndex] = { id, question, answer, category, documentUrl, documentText };
+        const updatedFaqData = { id, question, answer, category, attachments: parsedAttachments, documentText };
+        faqs[faqIndex] = updatedFaqData;
+
+        console.log('Backend - faqs[faqIndex] (após atualização em memória, antes de salvar):', faqs[faqIndex]);
 
         await saveFaqs(faqs);
+        console.log('Backend - saveFaqs executado. Dados salvos.');
 
-        // Log da atividade
-        await logActivity('UPDATE_FAQ', id, { old: { question: oldFaq.question, category: oldFaq.category }, new: { question, category } }, userIp, userAgent, userId); //
+        const reloadedFaqs = await loadFaqs();
+        const savedFaq = reloadedFaqs.find(f => f.id === id);
 
-        res.status(200).json(faqs[faqIndex]);
+        console.log('Backend - savedFaq (objeto recarregado do disco):', savedFaq);
+
+        if (savedFaq) {
+            res.status(200).json(savedFaq);
+        } else {
+            console.error(`Backend - Erro: FAQ ${id} não encontrado após recarga do disco.`);
+            res.status(500).json({ message: 'Erro interno ao atualizar e verificar FAQ.' });
+        }
+
+        await logActivity('UPDATE_FAQ', id, { old: { question: faqs[faqIndex].question, category: faqs[faqIndex].category, attachments: faqs[faqIndex].attachments }, new: { question, category, attachments: parsedAttachments } }, userIp, userAgent, userId);
+
     } catch (error) {
-        console.error(`Erro ao atualizar FAQ com ID ${id}:`, error);
+        console.error(`Backend - Erro CRÍTICO ao atualizar FAQ com ID ${id}:`, error);
         res.status(500).json({ message: 'Erro ao atualizar FAQ.' });
     }
 });
 
-// Rota DELETE para excluir FAQs por categoria
 app.delete('/api/faqs/category/:categoryName', async (req, res) => {
     const { categoryName } = req.params;
-    const userIp = req.ip; // Obtém o IP do cliente
-    const userAgent = req.headers['user-agent']; // Obtém o User-Agent
-    const userId = req.headers['x-user-id'] || 'anonymous'; // Adicione um cabeçalho customizado se usar ID de frontend
+    const userIp = req.ip;
+    const userAgent = req.headers['user-agent'];
+    const userId = req.headers['x-user-id'] || 'anonymous';
 
     try {
         let faqs = await loadFaqs();
@@ -381,8 +404,7 @@ app.delete('/api/faqs/category/:categoryName', async (req, res) => {
 
         await saveFaqs(faqs);
 
-        // Log da atividade
-        await logActivity('DELETE_CATEGORY_FAQS', 'N/A', { category: categoryName, count: deletedFaqsCount }, userIp, userAgent, userId); //
+        await logActivity('DELETE_CATEGORY_FAQS', 'N/A', { category: categoryName, count: deletedFaqsCount }, userIp, userAgent, userId);
 
         res.status(200).json({ message: `Todas as FAQs da categoria '${categoryName}' foram excluídas com sucesso.` });
     } catch (error) {
@@ -391,17 +413,16 @@ app.delete('/api/faqs/category/:categoryName', async (req, res) => {
     }
 });
 
-// Rota DELETE para excluir um FAQ existente
 app.delete('/api/faqs/:id', async (req, res) => {
     const { id } = req.params;
-    const userIp = req.ip; // Obtém o IP do cliente
-    const userAgent = req.headers['user-agent']; // Obtém o User-Agent
-    const userId = req.headers['x-user-id'] || 'anonymous'; // Adicione um cabeçalho customizado se usar ID de frontend
+    const userIp = req.ip;
+    const userAgent = req.headers['user-agent'];
+    const userId = req.headers['x-user-id'] || 'anonymous';
 
     try {
         let faqs = await loadFaqs();
         const initialLength = faqs.length;
-        const deletedFaq = faqs.find(faq => faq.id === id); // Captura o FAQ para o log
+        const deletedFaq = faqs.find(faq => faq.id === id);
         faqs = faqs.filter(faq => faq.id !== id);
 
         if (faqs.length === initialLength) {
@@ -410,9 +431,8 @@ app.delete('/api/faqs/:id', async (req, res) => {
 
         await saveFaqs(faqs);
 
-        // Log da atividade
         if (deletedFaq) {
-            await logActivity('DELETE_FAQ', id, { question: deletedFaq.question, category: deletedFaq.category }, userIp, userAgent, userId); //
+            await logActivity('DELETE_FAQ', id, { question: deletedFaq.question, category: deletedFaq.category }, userIp, userAgent, userId);
         }
 
         res.status(204).send();
@@ -422,12 +442,11 @@ app.delete('/api/faqs/:id', async (req, res) => {
     }
 });
 
-// Rota PUT para renomear uma categoria
 app.put('/api/faqs/category/rename', async (req, res) => {
     const { oldCategoryName, newCategoryName } = req.body;
-    const userIp = req.ip; // Obtém o IP do cliente
-    const userAgent = req.headers['user-agent']; // Obtém o User-Agent
-    const userId = req.headers['x-user-id'] || 'anonymous'; // Adicione um cabeçalho customizado se usar ID de frontend
+    const userIp = req.ip;
+    const userAgent = req.headers['user-agent'];
+    const userId = req.headers['x-user-id'] || 'anonymous';
 
     if (!oldCategoryName || !newCategoryName) {
         return res.status(400).json({ message: 'Os campos oldCategoryName e newCategoryName são obrigatórios.' });
@@ -454,8 +473,7 @@ app.put('/api/faqs/category/rename', async (req, res) => {
 
         await saveFaqs(updatedFaqs);
 
-        // Log da atividade
-        await logActivity('RENAME_CATEGORY', 'N/A', { oldCategory: oldCategoryName, newCategory: newCategoryName, count: updatedCount }, userIp, userAgent, userId); //
+        await logActivity('RENAME_CATEGORY', 'N/A', { oldCategory: oldCategoryName, newCategory: newCategoryName, count: updatedCount }, userIp, userAgent, userId);
 
         res.status(200).json({ message: `${updatedCount} FAQs da categoria '${oldCategoryName}' foram renomeados para '${newCategoryName}'.` });
     } catch (error) {
@@ -465,17 +483,13 @@ app.put('/api/faqs/category/rename', async (req, res) => {
 });
 
 app.post('/api/ai-chat', uploadChatImage.single('image'), async (req, res) => {
-    // ... (verificações de horário e rate limiting existentes)
-
     try {
         const { message, history, relevantFAQsContext } = req.body;
-        const imageFile = req.file; // Este é o buffer da imagem do Multer memoryStorage
+        const imageFile = req.file;
 
-        let currentAssetFileUrl = null; // Para armazenar a URL da imagem/documento atual
+        let currentAssetFileUrl = null;
 
-        // NOVO: Se houver arquivo (imagem), salve-o em disco e obtenha a URL persistente
         if (imageFile) {
-            // Reutiliza a lógica de salvamento para chat assets
             const savedAssetInfo = await saveChatAssetToDisk(imageFile.buffer, imageFile.originalname, imageFile.mimetype);
             currentAssetFileUrl = savedAssetInfo.fileUrl;
             console.log("Server - Chat asset salvo em:", currentAssetFileUrl);
@@ -498,20 +512,16 @@ app.post('/api/ai-chat', uploadChatImage.single('image'), async (req, res) => {
 
         const contentParts = [];
 
-        // Adicione o relevantFAQsContext que vem do frontend
         if (relevantFAQsContext) {
             contentParts.push({ text: relevantFAQsContext });
         }
 
-        // NOVO: Adicione a URL do arquivo atual (imagem) ao contexto textual para a IA
         let userMessageText = message || "";
         if (currentAssetFileUrl) {
             userMessageText += `\n\n[ARQUIVO_ANEXADO:${currentAssetFileUrl}]`;
         }
         contentParts.push({ text: userMessageText });
 
-        // Mantenha o inlineData para o processamento de visão da IA na *requisição atual*
-        // A IA verá o [USER_ASSET_URL:...] no texto E a imagem binária.
         if (imageFile) {
             const imageBase64 = imageFile.buffer.toString('base64');
             let normalizedMimeType = imageFile.mimetype;
@@ -550,11 +560,9 @@ app.post('/api/ai-chat', uploadChatImage.single('image'), async (req, res) => {
         const result = await chatSession.sendMessage(contentParts);
         const aiResponseText = result.response.text();
 
-        // MODIFICADO: Retorna userAssetUrl para o frontend
         res.json({ response: aiResponseText, userAssetUrl: currentAssetFileUrl });
     } catch (error) {
         console.error("Erro ao chamar API Gemini via proxy:", error);
-        // Se o erro for por tamanho de arquivo, o Multer pode emitir um erro antes
         if (error.code === 'LIMIT_FILE_SIZE') {
             return res.status(413).json({ message: `Arquivo muito grande. Limite: ${multerLimits.fileSize / (1024 * 1024)}MB.` });
         }
@@ -562,13 +570,11 @@ app.post('/api/ai-chat', uploadChatImage.single('image'), async (req, res) => {
     }
 });
 
-
-// NOVO: Rota para consultar o log de atividades de FAQ
-app.get('/api/logs/faq-activity', async (req, res) => { //
+app.get('/api/logs/faq-activity', async (req, res) => {
     try {
-        await fs.access(LOG_FILE); // Verifica se o arquivo existe
+        await fs.access(LOG_FILE);
         const data = await fs.readFile(LOG_FILE, 'utf8');
-        res.status(200).type('text/plain').send(data); // Envia como texto puro
+        res.status(200).type('text/plain').send(data);
     } catch (error) {
         if (error.code === 'ENOENT') {
             return res.status(404).json({ message: 'Arquivo de log de atividades não encontrado.' });
@@ -578,13 +584,11 @@ app.get('/api/logs/faq-activity', async (req, res) => { //
     }
 });
 
-
-// Rota curinga para servir o index.html para todas as outras rotas do frontend
 app.get('*', (req, res) => {
     res.sendFile(path.join(frontendBuildPath, 'index.html'));
 });
 
-app.listen(PORT, () => { // Ouve em '0.0.0.0' para ser acessível externamente no Fly.io
+app.listen(PORT, () => {
     console.log(`Servidor FAQ rodando na porta ${PORT}`);
     console.log(`Diretório de uploads: ${UPLOADS_DIR}`);
 });

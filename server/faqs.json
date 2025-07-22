@@ -1,20 +1,12 @@
 [
   {
-    "id": "algum-id-valido-aqui",
-    "question": "Como testar o sistema?",
-    "answer": "<h1>Este é um título grande</h1><p>Esta é uma <strong>resposta</strong> de <em>teste</em>.</p><ul><li>Item 1</li><li>Item 2</li></ul><p>Texto do documento: [Clique para ver/baixar o documento: meu_doc.pdf](/uploads/meu_doc.pdf)</p>",
-    "category": "Testes"
-  },
-  {
-    "id": "98ca0125-e964-458a-9af8-53684a2bc613",
-    "question": "Teste?",
-    "answer": "Sim!",
-    "category": "Testes"
-  },
-  {
-    "id": "890b976c-b253-4b1d-891b-969f895f7576",
-    "question": "Teste?",
-    "answer": "Sim!",
-    "category": "Testes"
+    "id": "d78781a5-4a15-4d41-9256-6bfaa160d24a",
+    "question": "Como usar o FredBoat?",
+    "answer": "<h1>É dessa forma que usa.</h1><p>é um aplicativo ...</p><div style=\"display:none;\">***FIM DO CONTEÚDO DO DOCUMENTO PARA IA*** </div>",
+    "category": "FredBoat",
+    "documentUrl": "/uploads/file-1752805970579-576047626.pdf",
+    "documentText": "Conteúdo ...",
+    "documentName": "file-1752805970579-576047626.pdf",
+    "documentExtension": "PDF"
   }
 ]

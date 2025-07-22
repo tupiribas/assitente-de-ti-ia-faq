@@ -12,44 +12,60 @@ interface FAQSectionProps {
 }
 
 const FAQSection: React.FC<FAQSectionProps> = ({ faqs, onEditFAQ, onDeleteFAQ }) => {
+  console.log('FAQs recebidos no FAQSection (início):', faqs);
+
   const [searchTerm, setSearchTerm] = useState('');
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const filteredFAQs = useMemo(() => {
+    const safeFaqs = Array.isArray(faqs) ? faqs.filter(Boolean) : [];
+    console.log('Safe FAQs após filtro inicial (Boolean):', safeFaqs);
+
+    let resultFaqs;
     if (!searchTerm) {
-      // VVVV INÍCIO DA CORREÇÃO VVVV
-      return faqs.filter(faq => faq && typeof faq.question === 'string' && typeof faq.answer === 'string' && typeof faq.category === 'string'); // Garante que o FAQ é um objeto válido
-      // ^^^^ FIM DA CORREÇÃO ^^^^
-    }
-    return faqs.filter(
-      (faq) => {
-        // VVVV INÍCIO DA CORREÇÃO VVVV
-        if (!faq || typeof faq.question !== 'string' || typeof faq.answer !== 'string' || typeof faq.category !== 'string') {
-          return false; // Ignora FAQs malformados na filtragem
+      resultFaqs = safeFaqs.filter(faq =>
+        typeof faq === 'object' && faq !== null &&
+        typeof faq.id === 'string' &&
+        typeof faq.question === 'string' &&
+        typeof faq.answer === 'string' &&
+        typeof faq.category === 'string'
+      );
+    } else {
+      resultFaqs = safeFaqs.filter(
+        (faq) => {
+          if (
+            typeof faq !== 'object' || faq === null ||
+            typeof faq.id !== 'string' ||
+            typeof faq.question !== 'string' ||
+            typeof faq.answer !== 'string' ||
+            typeof faq.category !== 'string'
+          ) {
+            return false;
+          }
+          return (
+            faq.question.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            faq.answer.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            faq.category.toLowerCase().includes(searchTerm.toLowerCase())
+          );
         }
-        // ^^^^ FIM DA CORREÇÃO ^^^^
-        return (
-          faq.question.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          faq.answer.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          faq.category.toLowerCase().includes(searchTerm.toLowerCase())
-        );
-      }
-    );
+      );
+    }
+    console.log('Filtered FAQs após validação de propriedades:', resultFaqs);
+    return resultFaqs;
   }, [searchTerm, faqs]);
 
+  console.log('Filtered FAQs antes de agrupar por categoria:', filteredFAQs);
+
   const faqsByCategory = useMemo(() => {
-    return filteredFAQs.reduce((acc, faq) => {
-      // VVVV INÍCIO DA CORREÇÃO VVVV
-      if (!faq) { // Filtra qualquer FAQ nulo/indefinido que possa ter passado
-        return acc;
-      }
-      // ^^^^ FIM DA CORREÇÃO ^^^^
+    const result = filteredFAQs.reduce((acc, faq) => {
       if (!acc[faq.category]) {
         acc[faq.category] = [];
       }
       acc[faq.category].push(faq);
       return acc;
     }, {} as Record<string, FAQ[]>);
+    console.log('FAQs agrupados por categoria:', result);
+    return result;
   }, [filteredFAQs]);
 
   const toggleFAQ = (id: string) => {
@@ -87,9 +103,7 @@ const FAQSection: React.FC<FAQSectionProps> = ({ faqs, onEditFAQ, onDeleteFAQ })
           <div key={category} className="mb-8">
             <h3 className="text-xl font-semibold text-orange-700 mb-4 border-b-2 border-orange-200 pb-2">{category}</h3>
             <div className="space-y-3">
-              {/* VVVV INÍCIO DA CORREÇÃO VVVV */}
-              {categoryFaqs.filter(faq => faq).map((faq) => ( // Filtra items null/undefined antes de mapear
-                // ^^^^ FIM DA CORREÇÃO ^^^^
+              {categoryFaqs.filter(faq => faq).map((faq) => (
                 <FAQItem
                   key={faq.id}
                   faq={faq}

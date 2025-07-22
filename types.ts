@@ -1,11 +1,19 @@
+export interface FAQAttachment {
+  url: string;
+  name: string;
+  extension: string;
+  type: 'image' | 'document';
+}
+
 export interface FAQ {
   id: string;
   question: string;
   answer: string;
   category: string;
-  imageUrl?: string;
-  documentUrl?: string; // Opcional: URL onde o documento original pode ser acessado
+  attachments: FAQAttachment[]; // <--- ALTERADO: Removido o '?' para torná-lo obrigatório
+  documentUrl?: string;
   documentText?: string;
+  _attachmentsData?: string;
 }
 
 export interface ChatMessage {
@@ -22,9 +30,6 @@ export enum AppView {
   MANAGE_FAQS = 'manage_faqs'
 }
 
-// Gemini API related types that might be used, though direct usage in components is often through service responses.
-// This is more for reference or if we decide to type specific parts of the Gemini response if not fully handled by the SDK types.
-// For example, if we were to parse grounding metadata.
 export interface GroundingChunkWeb {
   uri: string;
   title: string;

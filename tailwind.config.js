@@ -12,11 +12,8 @@ export default {
       typography: ({ theme }) => ({
         DEFAULT: {
           css: {
-            // Garante que os tamanhos sejam aplicados com !important, se necessário
-            // Nota: Usar !important deve ser um último recurso, mas pode ser útil para depuração.
-            // Tente sem !important primeiro. Se não funcionar, adicione-o para testar.
             h1: {
-              fontSize: theme('fontSize.4xl') + ' !important', // Exemplo com !important
+              fontSize: theme('fontSize.4xl') + ' !important',
               fontWeight: theme('fontWeight.bold') + ' !important',
               marginTop: theme('spacing.8') + ' !important',
               marginBottom: theme('spacing.4') + ' !important',
@@ -33,26 +30,22 @@ export default {
               marginTop: theme('spacing.6') + ' !important',
               marginBottom: theme('spacing.2') + ' !important',
             },
-            // VVVV INÍCIO DA CORREÇÃO PARA LINKS VVVV
             a: {
-              color: theme('colors.orange.600') + ' !important',
-              textDecoration: 'none !important', // Remove o sublinhado padrão
+              color: theme('colors.blue.700') + ' !important', // Azul para links
+              textDecoration: 'none !important',
               '&:hover': {
-                color: theme('colors.orange.800') + ' !important',
-                textDecoration: 'underline !important', // Adiciona sublinhado apenas no hover, se desejar
+                color: theme('colors.blue.900') + ' !important',
+                textDecoration: 'underline !important',
               },
             },
-            // ^^^^ FIM DA CORREÇÃO PARA LINKS ^^^^
-            ol: {
-              paddingLeft: theme('spacing.6') + ' !important',
+            // Adicione estilos para a classe do card de anexo se não estiverem funcionando
+            '.faq-document-card a': { // Estilos para links dentro do card
+              color: theme('colors.blue.700') + ' !important',
+              textDecoration: 'none !important',
             },
-            ul: {
-              paddingLeft: theme('spacing.6') + ' !important',
-            },
-            li: {
-              marginTop: theme('spacing.1') + ' !important',
-              marginBottom: theme('spacing.1') + ' !important',
-            },
+            '.faq-document-card a:hover': {
+              textDecoration: 'underline !important',
+            }
           },
         },
       }),
