@@ -181,7 +181,8 @@ const ManageFAQsSection: React.FC<ManageFAQsSectionProps> = ({ onAddFAQ, faqToEd
           <label htmlFor="faq-answer" className="block text-sm font-medium text-slate-700 mb-1">
             Resposta (Solução)
           </label>
-          <ReactQuill ref={quillRef} theme="snow" value={answer} onChange={setAnswer} modules={{ toolbar: [[{ 'header': [1, 2, false] }], ['bold', 'italic', 'underline', 'strike', 'blockquote'], [{ 'list': 'ordered' }, { 'list': 'bullet' }], ['link', 'image'], ['clean']] }} formats={['header', 'bold', 'italic', 'underline', 'strike', 'blockquote', 'list', 'bullet', 'link', 'image']} placeholder="Descreva a solução com formatação rica..." readOnly={isSubmitting || isUploading} className="w-full h-48 mb-10" />
+          {/* ALTERAÇÕES AQUI: Removido 'h-80', adicionado 'min-h-[200px]' e 'resize-y' */}
+          <ReactQuill ref={quillRef} theme="snow" value={answer} onChange={setAnswer} modules={{ toolbar: [[{ 'header': [1, 2, false] }], ['bold', 'italic', 'underline', 'strike', 'blockquote'], [{ 'list': 'ordered' }, { 'list': 'bullet' }], ['link', 'image'], ['clean']] }} formats={['header', 'bold', 'italic', 'underline', 'strike', 'blockquote', 'list', 'bullet', 'link', 'image']} placeholder="Descreva a solução com formatação rica..." readOnly={isSubmitting || isUploading} className="w-full min-h-[200px] resize-y mb-10" />
         </div>
 
         <div className="border-t border-slate-200 pt-6 mt-6 space-y-4">
