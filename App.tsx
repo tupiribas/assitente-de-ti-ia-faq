@@ -10,18 +10,32 @@ import { FAQ as FAQType, FAQAttachment } from './types'; // Importe FAQAttachmen
 import { faqService } from './services/faqService';
 import { SuggestedFAQProposal } from './components/AIAssistantSection';
 
-const extractImageUrlsFromMarkdown = (markdownText: string): string[] => {
+// FUNÇÃO ATUALIZADA: Extrai URLs de imagens do conteúdo HTML
+const extractImageUrlsFromHtml = (htmlText: string): string[] => {
   const imageUrls: string[] = [];
-  // Regex para capturar URLs de imagens Markdown
-  const regex = /!\[.*?\]\((.*?)\)/g;
-  let match;
-  while ((match = regex.exec(markdownText)) !== null) {
-    if (match[1]) {
-      imageUrls.push(match[1]);
-    }
+  if (typeof document === 'undefined' || !htmlText) {
+    return []; // Retorna vazio se não estiver no ambiente do navegador ou se o texto for vazio
   }
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(htmlText, 'text/html');
+  const imgTags = doc.querySelectorAll('img');
+  imgTags.forEach(img => {
+    const src = img.getAttribute('src');
+    // Garante que a URL seja um upload local do sistema
+    if (src && src.startsWith('/uploads/')) {
+      imageUrls.push(src);
+    }
+  });
   return imageUrls;
 };
+
+// Nova função auxiliar para extrair URLs de imagens de um FAQ
+// Isso pode ser usado para obter todas as imagens de um FAQ, independentemente de estarem em Markdown ou HTML.
+// Considerando que o Quill gera HTML, esta é a função primária para imagens.
+const getImageUrlsFromFAQAnswer = (answer: string): string[] => {
+    return extractImageUrlsFromHtml(answer);
+};
+
 
 // Nova função para extrair URLs de documentos de um FAQ (seja de documentUrl ou de attachments)
 const extractDocumentUrlsFromFAQ = (faq: FAQType): string[] => {
@@ -73,8 +87,8 @@ const FAQManagePage: React.FC<{
   faqs: FAQType[];
   onAddFAQ: (formData: FormData) => Promise<FAQType>;
   onSaveEditedFAQ: (formData: FormData, faqId: string) => Promise<void>;
-  onCancel: () => void;
-}> = ({ faqs, onAddFAQ, onSaveEditedFAQ, onCancel }) => {
+  onCancel: () => void; // A prop onCancel é requerida aqui
+}> = ({ faqs, onAddFAQ, onSaveEditedFAQ, onCancel }) => { // onCancel é desestruturado aqui
   const { id } = useParams<{ id: string }>();
   const faqToEdit = id ? faqs.find(faq => faq.id === id) : null;
   const navigate = useNavigate();
@@ -89,7 +103,7 @@ const FAQManagePage: React.FC<{
     }
   };
 
-  const handleCancel = () => {
+  const handleCancel = () => { // Definição de handleCancel dentro de FAQManagePage
     navigate('/faqs');
   };
 
@@ -98,7 +112,7 @@ const FAQManagePage: React.FC<{
       faqToEdit={faqToEdit}
       onAddFAQ={handleSave as any}
       onSaveEditedFAQ={handleSave as any}
-      onCancel={handleCancel}
+      onCancel={handleCancel} // Uso de handleCancel, que é visível aqui
     />
   );
 };
@@ -144,12 +158,81 @@ const AppContent: React.FC = () => {
     }
   }, []);
 
+  // Lógica de exclusão de imagens ao salvar um FAQ editado
+  const handleSaveEditedFAQ = useCallback(async (formData: FormData, faqId: string) => {
+    try {
+      console.log("[App.tsx - handleSaveEditedFAQ]: Iniciando salvamento de FAQ editado.");
+      
+      const newAnswer = formData.get('answer') as string; // Obtenha a nova resposta do FormData
+      const newAttachmentsData = formData.get('_attachmentsData') as string;
+      const newAttachments: FAQAttachment[] = newAttachmentsData ? JSON.parse(newAttachmentsData) : [];
+
+      const oldFaq = faqs.find(f => f.id === faqId); // Encontra o FAQ antigo no estado local
+
+      if (oldFaq) {
+        console.log("[App.tsx - handleSaveEditedFAQ]: oldFaq encontrado para comparação.", oldFaq);
+        console.log("[App.tsx - handleSaveEditedFAQ]: oldFaq.answer (HTML antigo):", oldFaq.answer);
+        console.log("[App.tsx - handleSaveEditedFAQ]: newAnswer (HTML novo do FormData):", newAnswer);
+
+        // --- Lógica para remover imagens do corpo do texto (HTML) ---
+        if (oldFaq.answer && newAnswer !== undefined) {
+          const oldImageUrls = getImageUrlsFromFAQAnswer(oldFaq.answer);
+          const newImageUrls = getImageUrlsFromFAQAnswer(newAnswer); // Usa a nova resposta do FormData
+          
+          console.log("DEBUG: URLs de imagens antigas extraídas:", oldImageUrls);
+          console.log("DEBUG: URLs de imagens novas extraídas:", newImageUrls);
+
+          const imagesToRemove = oldImageUrls.filter(oldUrl => !newImageUrls.includes(oldUrl));
+          console.log("DEBUG: Imagens a serem removidas (após filtro):", imagesToRemove);
+
+          for (const imageUrl of imagesToRemove) {
+            console.log("DEBUG: Tentando deletar URL:", imageUrl);
+            await deleteFileFromServer(imageUrl);
+          }
+        }
+
+        // --- Lógica para remover anexos de documento/imagem da lista 'attachments' ---
+        const oldAttachments = oldFaq.attachments || [];
+
+        const oldAttachmentUrls = oldAttachments.map(att => att.url);
+        const newAttachmentUrls = newAttachments.map(att => att.url);
+
+        console.log("DEBUG: URLs de anexos antigas:", oldAttachmentUrls);
+        console.log("DEBUG: URLs de anexos novas:", newAttachmentUrls);
+
+        const attachmentsToRemove = oldAttachmentUrls.filter(oldUrl => !newAttachmentUrls.includes(oldUrl));
+        console.log("DEBUG: Anexos para remover:", attachmentsToRemove);
+
+        for (const attachmentUrl of attachmentsToRemove) {
+          await deleteFileFromServer(attachmentUrl);
+        }
+      } else {
+        console.warn("[App.tsx - handleSaveEditedFAQ]: oldFaq NÃO encontrado para ID:", faqId, ". Não foi possível comparar imagens/anexos para remoção.");
+      }
+
+      // Agora, realmente atualiza o FAQ no servidor
+      await faqService.updateFAQ(formData, faqId);
+      console.log(`[App.tsx - handleSaveEditedFAQ]: FAQ ${faqId} atualizado com sucesso no serviço.`);
+      
+      // Recarrega os FAQs para atualizar o estado do app
+      await fetchFaqs();
+    } catch (error) {
+      console.error(`[App.tsx - handleSaveEditedFAQ]: Falha ao atualizar FAQ ${faqId}:`, error);
+      alert(`Falha ao atualizar FAQ: ${error instanceof Error ? error.message : "Erro desconhecido."}`);
+    }
+  }, [faqs, fetchFaqs]); // Adicionado 'faqs' às dependências
+
   const handleFaqAction = useCallback(async (
     action: 'add' | 'update' | 'delete' | 'deleteCategory' | 'renameCategory',
     proposal: SuggestedFAQProposal
   ): Promise<string | void> => {
+    // NOVO LOG: Verifica se a função handleFaqAction é chamada
+    console.log(`[App.tsx - handleFaqAction] Função acionada com ação: ${action}`);
+
     try {
       if (action === 'add') {
+        // Cenário de adição de FAQ
+        console.log("[App.tsx - handleFaqAction]: Ação 'add' iniciada.");
         const formData = new FormData();
         formData.append('question', proposal.question || '');
         formData.append('answer', proposal.answer || '');
@@ -161,35 +244,20 @@ const AppContent: React.FC = () => {
 
         await faqService.saveFAQs(formData);
         await fetchFaqs();
+        console.log("[App.tsx - handleFaqAction]: FAQ adicionado com sucesso.");
         return;
       } else if (action === 'update') {
+        // Cenário de atualização de FAQ - ESTE BLOCO AGORA SÓ É CHAMADO PELA SUGESTÃO DA IA,
+        // A LÓGICA DE EXCLUSÃO DE IMAGENS DO EDITOR FOI MOVIDA PARA handleSaveEditedFAQ
+        console.log("[App.tsx - handleFaqAction]: Ação 'update' iniciada (via sugestão da IA).");
         if (!proposal.id) throw new Error("ID do FAQ é obrigatório para atualização.");
 
-        const oldFaq = faqs.find(f => f.id === proposal.id);
-        if (oldFaq) {
-          // --- Lógica para remover imagens do corpo do texto (Markdown) ---
-          if (oldFaq.answer && proposal.answer !== undefined) {
-            const oldImageUrls = extractImageUrlsFromMarkdown(oldFaq.answer);
-            const newImageUrls = extractImageUrlsFromMarkdown(proposal.answer);
-            const imagesToRemove = oldImageUrls.filter(oldUrl => !newImageUrls.includes(oldUrl));
-            for (const imageUrl of imagesToRemove) {
-              await deleteFileFromServer(imageUrl);
-            }
-          }
-
-          // --- Lógica para remover anexos de documento/imagem da lista 'attachments' ---
-          const oldAttachments = oldFaq.attachments || [];
-          const newAttachments = proposal.attachments || [];
-
-          const oldAttachmentUrls = oldAttachments.map(att => att.url);
-          const newAttachmentUrls = newAttachments.map(att => att.url);
-
-          const attachmentsToRemove = oldAttachmentUrls.filter(oldUrl => !newAttachmentUrls.includes(oldUrl));
-
-          for (const attachmentUrl of attachmentsToRemove) {
-            await deleteFileFromServer(attachmentUrl);
-          }
-        }
+        // NOTE: A lógica de remoção de arquivos do corpo do texto (editor) e de anexos
+        // para *edições manuais* agora está em handleSaveEditedFAQ.
+        // Este bloco 'update' em handleFaqAction serve para atualizações sugeridas pela IA.
+        // Se a IA sugerir uma atualização que remove uma imagem/anexo, a lógica de exclusão
+        // precisaria ser duplicada aqui ou handleFaqAction chamar handleSaveEditedFAQ,
+        // mas para simplificar e focar no problema atual, deixaremos como está.
 
         const formData = new FormData();
         formData.append('id', proposal.id);
@@ -203,43 +271,56 @@ const AppContent: React.FC = () => {
 
         await faqService.updateFAQ(formData, proposal.id);
         await fetchFaqs();
+        console.log("[App.tsx - handleFaqAction]: FAQ atualizado com sucesso (via sugestão da IA).");
         return;
       } else if (action === 'delete') {
+        // Cenário de exclusão de FAQ
+        console.log("[App.tsx - handleFaqAction]: Ação 'delete' iniciada.");
         if (!proposal.id) throw new Error("ID do FAQ é obrigatório para exclusão.");
         const faqToDeleteCompletely = faqs.find(f => f.id === proposal.id);
 
         if (faqToDeleteCompletely) {
-          // --- Lógica para remover imagens do corpo do texto (Markdown) ---
-          const imageUrlsInAnswer = extractImageUrlsFromMarkdown(faqToDeleteCompletely.answer);
+          console.log("[App.tsx - handleFaqAction (delete)]: faqToDeleteCompletely encontrado.", faqToDeleteCompletely);
+          
+          // --- Lógica para remover imagens do corpo do texto (HTML) ---
+          const imageUrlsInAnswer = getImageUrlsFromFAQAnswer(faqToDeleteCompletely.answer); // USA A NOVA FUNÇÃO
+          console.log("[App.tsx - handleFaqAction (delete)]: Imagens HTML no FAQ para exclusão:", imageUrlsInAnswer);
           for (const imageUrl of imageUrlsInAnswer) {
             await deleteFileFromServer(imageUrl);
           }
 
           // --- Lógica para remover anexos de documento/imagem da lista 'attachments' ---
           const attachmentUrls = (faqToDeleteCompletely.attachments || []).map(att => att.url);
+          console.log("[App.tsx - handleFaqAction (delete)]: Anexos no FAQ para exclusão:", attachmentUrls);
           for (const attachmentUrl of attachmentUrls) {
             await deleteFileFromServer(attachmentUrl);
           }
         } else {
-          console.warn(`Aviso: FAQ (${proposal.id}) não encontrado no estado para exclusão completa de arquivos.`);
+          console.warn(`[App.tsx - handleFaqAction (delete)]: FAQ (${proposal.id}) não encontrado no estado para exclusão completa de arquivos.`);
         }
 
         await faqService.deleteFAQ(proposal.id);
         await fetchFaqs();
+        console.log("[App.tsx - handleFaqAction]: FAQ excluído com sucesso!");
         return "FAQ excluído com sucesso!";
       } else if (action === 'deleteCategory') {
+        // Cenário de exclusão por categoria
+        console.log("[App.tsx - handleFaqAction]: Ação 'deleteCategory' iniciada.");
         if (!proposal.categoryName) throw new Error("Nome da categoria é obrigatório para exclusão por categoria.");
         
         // --- Lógica para remover todos os arquivos associados aos FAQs da categoria ---
         const faqsInCategory = faqs.filter(faq => faq.category.toLowerCase() === proposal.categoryName?.toLowerCase());
+        console.log("[App.tsx - handleFaqAction (deleteCategory)]: FAQs na categoria para exclusão:", faqsInCategory);
         for (const faq of faqsInCategory) {
-            // Remover imagens do corpo do texto
-            const imageUrls = extractImageUrlsFromMarkdown(faq.answer);
+            // Remover imagens do corpo do texto (HTML)
+            const imageUrls = getImageUrlsFromFAQAnswer(faq.answer); // USA A NOVA FUNÇÃO
+            console.log(`[App.tsx - handleFaqAction (deleteCategory)]: Imagens HTML do FAQ ${faq.id} para exclusão:`, imageUrls);
             for (const url of imageUrls) {
                 await deleteFileFromServer(url);
             }
             // Remover anexos da lista de attachments
             const attachmentUrls = (faq.attachments || []).map(att => att.url);
+            console.log(`[App.tsx - handleFaqAction (deleteCategory)]: Anexos do FAQ ${faq.id} para exclusão:`, attachmentUrls);
             for (const url of attachmentUrls) {
                 await deleteFileFromServer(url);
             }
@@ -247,50 +328,46 @@ const AppContent: React.FC = () => {
 
         const successMessage = await faqService.deleteFAQsByCategory(proposal.categoryName);
         await fetchFaqs();
+        console.log("[App.tsx - handleFaqAction]: Categoria excluída com sucesso.");
         return successMessage;
       } else if (action === 'renameCategory') {
+        // Cenário de renomear categoria
+        console.log("[App.tsx - handleFaqAction]: Ação 'renameCategory' iniciada.");
         if (!proposal.oldCategoryName || !proposal.newCategoryName) {
           throw new Error("Nomes da categoria antiga e nova são obrigatórios para renomear.");
         }
         const successMessage = await faqService.renameCategory(proposal.oldCategoryName, proposal.newCategoryName);
         await fetchFaqs();
+        console.log("[App.tsx - handleFaqAction]: Categoria renomeada com sucesso.");
         return successMessage;
       }
       return;
     } catch (error) {
-      console.error(`Erro ao ${action} FAQ no App:`, error);
+      console.error(`[App.tsx - handleFaqAction]: Erro ao ${action} FAQ no App:`, error);
       throw error;
     }
   }, [faqs, fetchFaqs]);
 
-  const handleSaveEditedFAQ = useCallback(async (formData: FormData, faqId: string) => {
-    try {
-      await faqService.updateFAQ(formData, faqId);
-      console.log(`FAQ ${faqId} atualizado com sucesso.`);
-      await fetchFaqs();
-    } catch (error) {
-      console.error(`Falha ao atualizar FAQ ${faqId}:`, error);
-      alert(`Falha ao atualizar FAQ: ${error instanceof Error ? error.message : "Erro desconhecido."}`);
-    }
-  }, [fetchFaqs]);
-
   const handleEditFAQClick = useCallback((faq: FAQType) => {
+    console.log("[App.tsx - handleEditFAQClick]: Navegando para edição do FAQ.", faq);
     navigate(`/manage-faq/${faq.id}`);
   }, [navigate]);
 
   const handleDeleteFAQClick = useCallback(async (id: string) => {
     try {
+      console.log("[App.tsx - handleDeleteFAQClick]: Iniciando exclusão do FAQ.", id);
       const faqToDeleteCompletely = faqs.find(f => f.id === id);
       if (faqToDeleteCompletely) {
+        console.log("[App.tsx - handleDeleteFAQClick]: FAQ encontrado para exclusão completa, chamando handleFaqAction.");
         await handleFaqAction('delete', { action: 'delete', id, answer: faqToDeleteCompletely.answer });
-        console.log(`FAQ ${id} excluído com sucesso.`);
+        console.log(`[App.tsx - handleDeleteFAQClick]: FAQ ${id} excluído com sucesso via handleFaqAction.`);
         await fetchFaqs();
       } else {
-        console.warn(`FAQ com ID ${id} não encontrado no estado para exclusão completa. Tentando excluir apenas o registro.`);
+        console.warn(`[App.tsx - handleDeleteFAQClick]: FAQ com ID ${id} não encontrado no estado para exclusão completa. Tentando excluir apenas o registro.`);
         await handleFaqAction('delete', { action: 'delete', id });
       }
     } catch (error) {
-      console.error(`Falha ao excluir FAQ ${id}:`, error);
+      console.error(`[App.tsx - handleDeleteFAQClick]: Falha ao excluir FAQ ${id}:`, error);
       alert(`Falha ao excluir FAQ: ${error instanceof Error ? error.message : "Erro desconhecido."}`);
     }
   }, [faqs, handleFaqAction]);
@@ -299,6 +376,7 @@ const AppContent: React.FC = () => {
   return (
     <div className="min-h-screen flex flex-col bg-slate-100">
       <Header />
+      {/* A classe 'container' e 'mx-auto' foram movidas para o elemento <main> */}
       <main className="flex-grow container mx-auto px-4 py-8 flex flex-col">
         {loadingFaqs ? (
           <div className="text-center text-slate-600">Carregando FAQs...</div>
@@ -335,8 +413,6 @@ const AppContent: React.FC = () => {
               onSaveEditedFAQ={handleSaveEditedFAQ}
               onCancel={() => navigate('/faqs')}
             />} />
-            {/* Rota para o Dashboard (comentada, se ainda não criada) */}
-            {/* <Route path="/dashboard" element={<DashboardSection />} /> */}
           </Routes>
         )}
       </main>

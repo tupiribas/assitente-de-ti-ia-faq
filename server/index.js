@@ -4,7 +4,7 @@ const express = require('express');
 const fs = require('fs').promises;
 const path = require('path');
 const cors = require('cors');
-const { v4: uuidv4 } = require('uuid');
+const { v4: uuidv4 } = require('uuid'); // Revertido para 'uuid' padrão pois @lukeed/uuid não estava em package.json
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const multer = require('multer');
 const pdf = require('pdf-parse');
@@ -34,6 +34,7 @@ const UPLOADS_DIR = IS_PRODUCTION ? path.join('/app/data', 'uploads') : path.joi
 
 const FAQS_FILE = path.join(DATA_BASE_DIR, 'faqs.json');
 const LOG_FILE = path.join(DATA_BASE_DIR, 'faq_activity.log');
+const CHAT_LOG_FILE = path.join(DATA_BASE_DIR, 'ai_chat_log.log');
 const UPLOADS_SERVE_PATH = '/uploads';
 
 const frontendBuildPath = path.join(__dirname, '..', 'public');
@@ -77,9 +78,6 @@ const uploadChatImage = multer({
 });
 
 app.use(cors());
-// VVVV REMOVIDO: express.json() para todas as rotas (será adicionado por rota se necessário) VVVV
-// app.use(express.json());
-// ^^^^ FIM DA REMOÇÃO ^^^^
 app.set('trust proxy', true);
 
 app.use(UPLOADS_SERVE_PATH, express.static(UPLOADS_DIR));
@@ -94,6 +92,18 @@ const logActivity = async (action, faqId, details, ip, userAgent, userId = 'anon
         console.log(`Atividade logada: ${action} - ${faqId}`);
     } catch (error) {
         console.error('Erro ao escrever no arquivo de log:', error);
+    }
+};
+
+const logAIChatInteraction = async (userQuestion, aiResponse, detailLevel, ip, userAgent, userId = 'anonymous') => {
+    const timestamp = new Date().toISOString();
+    const logEntry = `[${timestamp}] [USER_ID: ${userId}] [IP: ${ip}] [USER_AGENT: ${userAgent}] QUESTION_DETAIL_LEVEL: ${detailLevel || 'N/A'} QUESTION: ${userQuestion} AI_RESPONSE_START: ${aiResponse.substring(0, 200)}...\n`;
+    try {
+        await fs.mkdir(path.dirname(CHAT_LOG_FILE), { recursive: true }).catch(console.error);
+        await fs.appendFile(CHAT_LOG_FILE, logEntry, 'utf8');
+        console.log(`Interação de chat da IA logada. Nível de detalhe: ${detailLevel}`);
+    } catch (error) {
+        console.error('Erro ao escrever no arquivo de log de chat da IA:', error);
     }
 };
 
@@ -135,8 +145,8 @@ app.delete('/api/uploads/:filename', async (req, res) => {
     const filePath = path.join(UPLOADS_DIR, filename);
 
     try {
-        await fs.access(filePath);
-        await fs.unlink(filePath);
+        await fs.access(filePath); // Verifica se o arquivo existe
+        await fs.unlink(filePath); // Exclui o arquivo
         console.log(`Arquivo ${filename} removido do servidor.`);
         res.status(200).json({ message: `Arquivo ${filename} removido com sucesso.` });
     } catch (error) {
@@ -228,6 +238,18 @@ async function extractTextFromTxt(filePath) {
     }
 }
 
+// Função para extrair URLs de imagens de conteúdo HTML (sem anotações de tipo)
+const extractImageUrlsFromHtml = (htmlText) => {
+    const imageUrls = [];
+    const imgRegex = /<img[^>]+src="(\/uploads\/[^"]+)"/g;
+    let match;
+    while ((match = imgRegex.exec(htmlText)) !== null) {
+        imageUrls.push(match[1]);
+    }
+    return imageUrls;
+};
+
+
 const isServiceTime = () => {
     return true;
 };
@@ -250,7 +272,6 @@ app.get('/api/faqs', async (req, res) => {
     }
 });
 
-// VVVV CORREÇÃO AQUI: Usa multer.none() para POST (analisa FormData) VVVV
 app.post('/api/faqs', multer().none(), async (req, res) => {
     console.log('Backend - FULL req.body antes de desestruturar (POST):', JSON.stringify(req.body, null, 2));
 
@@ -258,12 +279,11 @@ app.post('/api/faqs', multer().none(), async (req, res) => {
         return res.status(400).json({ message: 'Corpo da requisição ausente ou malformado. Verifique o Content-Type.' });
     }
 
-    // Acessa os campos diretamente de req.body (parseado por multer.none())
     const question = req.body.question;
     const answer = req.body.answer;
     const category = req.body.category;
     const documentText = req.body.documentText || undefined;
-    const _attachmentsData = req.body._attachmentsData; // Campo string com JSON de attachments
+    const _attachmentsData = req.body._attachmentsData;
 
     let parsedAttachments;
     if (typeof _attachmentsData === 'string') {
@@ -312,32 +332,30 @@ app.post('/api/faqs', multer().none(), async (req, res) => {
     }
 });
 
-// VVVV CORREÇÃO AQUI: Usa multer.none() para PUT (analisa FormData) VVVV
 app.put('/api/faqs/:id', multer().none(), async (req, res) => {
     console.log('Backend - FULL req.body antes de desestruturar (PUT):', JSON.stringify(req.body, null, 2));
 
     const { id } = req.params;
-    // Acessa os campos diretamente de req.body (parseado por multer.none())
     const question = req.body.question;
     const answer = req.body.answer;
     const category = req.body.category;
     const documentText = req.body.documentText || undefined;
-    const _attachmentsData = req.body._attachmentsData; // Campo string com JSON de attachments
+    const _attachmentsData = req.body._attachmentsData;
 
     let parsedAttachments;
     if (typeof _attachmentsData === 'string') {
         try {
             parsedAttachments = JSON.parse(_attachmentsData);
         } catch (e) {
-            console.error('Erro ao parsear _attachmentsData (PUT):', e); // ESTE LOG É CRÍTICO
+            console.error('Erro ao parsear _attachmentsData (PUT):', e);
             parsedAttachments = [];
         }
     } else {
         parsedAttachments = [];
     }
 
-    console.log('Backend - _attachmentsData recebido (frontend enviou):', _attachmentsData); // Ajusta log para _attachmentsData
-    console.log('Backend - parsedAttachments (garantido array):', parsedAttachments); // NOVO LOG
+    console.log('Backend - _attachmentsData recebido (frontend enviou):', _attachmentsData);
+    console.log('Backend - parsedAttachments (garantido array):', parsedAttachments);
 
     const userIp = req.ip;
     const userAgent = req.headers['user-agent'];
@@ -558,7 +576,22 @@ app.post('/api/ai-chat', uploadChatImage.single('image'), async (req, res) => {
         });
 
         const result = await chatSession.sendMessage(contentParts);
-        const aiResponseText = result.response.text();
+        let aiResponseText = result.response.text();
+
+        let questionDetailLevel = null;
+        const detailLevelRegex = /\[QUESTION_DETAIL_LEVEL:(Baixo|Médio|Alto)\]/i;
+        const detailLevelMatch = aiResponseText.match(detailLevelRegex);
+
+        if (detailLevelMatch && detailLevelMatch[1]) {
+            questionDetailLevel = detailLevelMatch[1];
+            aiResponseText = aiResponseText.replace(detailLevelRegex, '').trim();
+        }
+
+        const userIp = req.ip;
+        const userAgent = req.headers['user-agent'];
+        const userId = req.headers['x-user-id'] || 'anonymous';
+        await logAIChatInteraction(message, aiResponseText, questionDetailLevel, userIp, userAgent, userId);
+
 
         res.json({ response: aiResponseText, userAssetUrl: currentAssetFileUrl });
     } catch (error) {
@@ -569,6 +602,95 @@ app.post('/api/ai-chat', uploadChatImage.single('image'), async (req, res) => {
         res.status(500).json({ message: `Erro ao processar sua solicitação de IA: ${error.message || 'Erro desconhecido.'}` });
     }
 });
+
+app.get('/api/logs/ai-chat-activity', async (req, res) => {
+    try {
+        await fs.access(CHAT_LOG_FILE);
+        const data = await fs.readFile(CHAT_LOG_FILE, 'utf8');
+        res.status(200).type('text/plain').send(data);
+    } catch (error) {
+        if (error.code === 'ENOENT') {
+            return res.status(404).json({ message: 'Arquivo de log de atividades do chat da IA não encontrado.' });
+        }
+        console.error('Erro ao ler o arquivo de log do chat da IA:', error);
+        res.status(500).json({ message: 'Erro ao carregar o log de atividades do chat da IA.' });
+    }
+});
+
+// NOVO ENDPOINT: Limpeza de arquivos órfãos
+app.delete('/api/cleanup-orphaned-files', async (req, res) => {
+    const userIp = req.ip;
+    const userAgent = req.headers['user-agent'];
+    const userId = req.headers['x-user-id'] || 'anonymous';
+    console.log(`[${new Date().toISOString()}] Iniciando limpeza de arquivos órfãos por ${userId} (${userIp})`);
+
+    try {
+        const faqs = await loadFaqs();
+        // REMOVIDO: Anotação de tipo TypeScript
+        const usedUrls = new Set();
+
+        // 1. Coletar todas as URLs usadas de FAQs
+        for (const faq of faqs) {
+            // URLs de imagens no corpo da resposta (HTML)
+            const imagesInAnswer = extractImageUrlsFromHtml(faq.answer);
+            for (const url of imagesInAnswer) {
+                usedUrls.add(url);
+            }
+            // URLs de anexos
+            if (faq.attachments && Array.isArray(faq.attachments)) {
+                for (const att of faq.attachments) {
+                    usedUrls.add(att.url);
+                }
+            }
+        }
+        console.log("URLs usadas encontradas nos FAQs:", Array.from(usedUrls));
+
+        // 2. Coletar todos os arquivos físicos na pasta de uploads
+        let uploadedFiles;
+        try {
+            uploadedFiles = await fs.readdir(UPLOADS_DIR);
+        } catch (readDirError) {
+            console.error('Erro ao ler diretório de uploads:', readDirError);
+            return res.status(500).json({ message: 'Erro ao acessar diretório de uploads.' });
+        }
+
+        let deletedCount = 0;
+        let errorCount = 0;
+        // REMOVIDO: Anotação de tipo TypeScript
+        const deletedFilesList = [];
+        // REMOVIDO: Anotação de tipo TypeScript
+        const failedToDeleteList = [];
+
+        // 3. Comparar e excluir arquivos órfãos
+        for (const file of uploadedFiles) {
+            const fileUrl = `${UPLOADS_SERVE_PATH}/${file}`;
+            if (!usedUrls.has(fileUrl)) {
+                // Se a URL do arquivo não está na lista de URLs usadas, é órfão
+                const filePath = path.join(UPLOADS_DIR, file);
+                try {
+                    await fs.unlink(filePath);
+                    console.log(`Arquivo órfão removido: ${file}`);
+                    deletedCount++;
+                    deletedFilesList.push(file);
+                } catch (unlinkError) { // REMOVIDO: Anotação de tipo TypeScript
+                    console.error(`Erro ao remover arquivo órfão ${file}:`, unlinkError);
+                    errorCount++;
+                    failedToDeleteList.push(`${file} (${unlinkError.message})`);
+                }
+            }
+        }
+
+        const message = `Limpeza concluída. ${deletedCount} arquivos órfãos removidos. ${errorCount} falhas.`;
+        await logActivity('CLEANUP_ORPHANED_FILES', 'N/A', { removed: deletedFilesList, failed: failedToDeleteList }, userIp, userAgent, userId);
+        console.log(message);
+        res.status(200).json({ message, removedFiles: deletedFilesList, failedFiles: failedToDeleteList });
+
+    } catch (error) {
+        console.error('Erro no processo de limpeza de arquivos órfãos:', error);
+        res.status(500).json({ message: `Erro interno ao limpar arquivos: ${error.message || 'Erro desconhecido.'}` });
+    }
+});
+
 
 app.get('/api/logs/faq-activity', async (req, res) => {
     try {
