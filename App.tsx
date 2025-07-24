@@ -5,12 +5,14 @@ import Header from './components/Header';
 import FAQSection from './components/FAQSection';
 import AIAssistantSection from './components/AIAssistantSection';
 import ManageFAQsSection from './components/ManageFAQsSection';
-import { FAQ as FAQType } from './types';
+// import DashboardSection from './components/DashboardSection'; // REMOVIDO: Importação do DashboardSection
+import { FAQ as FAQType, FAQAttachment } from './types'; // Importe FAQAttachment
 import { faqService } from './services/faqService';
 import { SuggestedFAQProposal } from './components/AIAssistantSection';
 
 const extractImageUrlsFromMarkdown = (markdownText: string): string[] => {
   const imageUrls: string[] = [];
+  // Regex para capturar URLs de imagens Markdown
   const regex = /!\[.*?\]\((.*?)\)/g;
   let match;
   while ((match = regex.exec(markdownText)) !== null) {
@@ -21,21 +23,58 @@ const extractImageUrlsFromMarkdown = (markdownText: string): string[] => {
   return imageUrls;
 };
 
-const getFilenameFromImageUrl = (imageUrl: string): string | null => {
-  const parts = imageUrl.split('/');
+// Nova função para extrair URLs de documentos de um FAQ (seja de documentUrl ou de attachments)
+const extractDocumentUrlsFromFAQ = (faq: FAQType): string[] => {
+  const documentUrls: string[] = [];
+  if (faq.documentUrl) { // Se houver um documentUrl direto (legado ou de sugestão da IA)
+    documentUrls.push(faq.documentUrl);
+  }
+  if (faq.attachments && Array.isArray(faq.attachments)) {
+    faq.attachments.forEach(att => {
+      if (att.type === 'document' && att.url) {
+        documentUrls.push(att.url);
+      }
+    });
+  }
+  return documentUrls;
+};
+
+
+const getFilenameFromUrl = (url: string): string | null => {
+  const parts = url.split('/');
   const filename = parts[parts.length - 1];
-  if (filename && filename.match(/\.(png|jpg|jpeg|gif|webp|svg)$/i)) {
+  // Basic check to ensure it looks like a file (has an extension)
+  if (filename && filename.includes('.')) {
     return filename;
   }
   return null;
 };
 
+// Função auxiliar para deletar um arquivo no servidor
+const deleteFileFromServer = async (url: string) => {
+  const filename = getFilenameFromUrl(url);
+  if (filename) {
+    try {
+      const response = await fetch(`/api/uploads/${filename}`, { method: 'DELETE' });
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.warn(`Aviso: Falha ao remover arquivo ${filename} do servidor (Status: ${response.status}). Detalhes: ${errorText}`);
+      } else {
+        console.log(`Arquivo ${filename} removido do servidor.`);
+      }
+    } catch (fileDeleteError) {
+      console.warn(`Aviso: Erro inesperado ao tentar remover arquivo ${filename}:`, fileDeleteError);
+    }
+  }
+};
+
+
 const FAQManagePage: React.FC<{
   faqs: FAQType[];
   onAddFAQ: (formData: FormData) => Promise<FAQType>;
   onSaveEditedFAQ: (formData: FormData, faqId: string) => Promise<void>;
-  onCancel: () => void; // A prop onCancel é requerida aqui
-}> = ({ faqs, onAddFAQ, onSaveEditedFAQ, onCancel }) => { // onCancel é desestruturado aqui
+  onCancel: () => void;
+}> = ({ faqs, onAddFAQ, onSaveEditedFAQ, onCancel }) => {
   const { id } = useParams<{ id: string }>();
   const faqToEdit = id ? faqs.find(faq => faq.id === id) : null;
   const navigate = useNavigate();
@@ -50,7 +89,7 @@ const FAQManagePage: React.FC<{
     }
   };
 
-  const handleCancel = () => { // Definição de handleCancel dentro de FAQManagePage
+  const handleCancel = () => {
     navigate('/faqs');
   };
 
@@ -59,7 +98,7 @@ const FAQManagePage: React.FC<{
       faqToEdit={faqToEdit}
       onAddFAQ={handleSave as any}
       onSaveEditedFAQ={handleSave as any}
-      onCancel={handleCancel} // Uso de handleCancel, que é visível aqui
+      onCancel={handleCancel}
     />
   );
 };
@@ -127,26 +166,28 @@ const AppContent: React.FC = () => {
         if (!proposal.id) throw new Error("ID do FAQ é obrigatório para atualização.");
 
         const oldFaq = faqs.find(f => f.id === proposal.id);
-        if (oldFaq && oldFaq.answer && proposal.answer !== undefined) {
-          const oldImageUrls = extractImageUrlsFromMarkdown(oldFaq.answer);
-          const newImageUrls = extractImageUrlsFromMarkdown(proposal.answer);
-          const imagesToRemove = oldImageUrls.filter(oldUrl => !newImageUrls.includes(oldUrl));
-
-          for (const imageUrl of imagesToRemove) {
-            const filename = getFilenameFromImageUrl(imageUrl);
-            if (filename) {
-              try {
-                const response = await fetch(`/api/uploads/${filename}`, { method: 'DELETE' });
-                if (!response.ok) {
-                  const errorText = await response.text();
-                  console.warn(`Aviso: Falha ao remover imagem ${filename} do servidor (Status: ${response.status}). Detalhes: ${errorText}`);
-                } else {
-                  console.log(`Imagem ${filename} associada ao FAQ ${proposal.id} removida do servidor.`);
-                }
-              } catch (imageDeleteError) {
-                console.warn(`Aviso: Erro inesperado ao tentar remover imagem ${filename}:`, imageDeleteError);
-              }
+        if (oldFaq) {
+          // --- Lógica para remover imagens do corpo do texto (Markdown) ---
+          if (oldFaq.answer && proposal.answer !== undefined) {
+            const oldImageUrls = extractImageUrlsFromMarkdown(oldFaq.answer);
+            const newImageUrls = extractImageUrlsFromMarkdown(proposal.answer);
+            const imagesToRemove = oldImageUrls.filter(oldUrl => !newImageUrls.includes(oldUrl));
+            for (const imageUrl of imagesToRemove) {
+              await deleteFileFromServer(imageUrl);
             }
+          }
+
+          // --- Lógica para remover anexos de documento/imagem da lista 'attachments' ---
+          const oldAttachments = oldFaq.attachments || [];
+          const newAttachments = proposal.attachments || [];
+
+          const oldAttachmentUrls = oldAttachments.map(att => att.url);
+          const newAttachmentUrls = newAttachments.map(att => att.url);
+
+          const attachmentsToRemove = oldAttachmentUrls.filter(oldUrl => !newAttachmentUrls.includes(oldUrl));
+
+          for (const attachmentUrl of attachmentsToRemove) {
+            await deleteFileFromServer(attachmentUrl);
           }
         }
 
@@ -165,28 +206,22 @@ const AppContent: React.FC = () => {
         return;
       } else if (action === 'delete') {
         if (!proposal.id) throw new Error("ID do FAQ é obrigatório para exclusão.");
-        const faqAnswerForImageDeletion = proposal.answer || faqs.find(f => f.id === proposal.id)?.answer;
+        const faqToDeleteCompletely = faqs.find(f => f.id === proposal.id);
 
-        if (faqAnswerForImageDeletion) {
-          const imageUrls = extractImageUrlsFromMarkdown(faqAnswerForImageDeletion);
-          for (const imageUrl of imageUrls) {
-            const filename = getFilenameFromImageUrl(imageUrl);
-            if (filename) {
-              try {
-                const response = await fetch(`/api/uploads/${filename}`, { method: 'DELETE' });
-                if (!response.ok) {
-                  const errorText = await response.text();
-                  console.warn(`Aviso: Falha ao remover imagem ${filename} do servidor (Status: ${response.status}). Detalhes: ${errorText}`);
-                } else {
-                  console.log(`Imagem ${filename} associada ao FAQ ${proposal.id} removida do servidor.`);
-                }
-              } catch (imageDeleteError) {
-                console.warn(`Aviso: Erro inesperado ao tentar remover imagem ${filename}:`, imageDeleteError);
-              }
-            }
+        if (faqToDeleteCompletely) {
+          // --- Lógica para remover imagens do corpo do texto (Markdown) ---
+          const imageUrlsInAnswer = extractImageUrlsFromMarkdown(faqToDeleteCompletely.answer);
+          for (const imageUrl of imageUrlsInAnswer) {
+            await deleteFileFromServer(imageUrl);
+          }
+
+          // --- Lógica para remover anexos de documento/imagem da lista 'attachments' ---
+          const attachmentUrls = (faqToDeleteCompletely.attachments || []).map(att => att.url);
+          for (const attachmentUrl of attachmentUrls) {
+            await deleteFileFromServer(attachmentUrl);
           }
         } else {
-          console.warn(`Aviso: Resposta da FAQ (${proposal.id}) não disponível para extração de imagem. Imagens não serão removidas.`);
+          console.warn(`Aviso: FAQ (${proposal.id}) não encontrado no estado para exclusão completa de arquivos.`);
         }
 
         await faqService.deleteFAQ(proposal.id);
@@ -194,6 +229,22 @@ const AppContent: React.FC = () => {
         return "FAQ excluído com sucesso!";
       } else if (action === 'deleteCategory') {
         if (!proposal.categoryName) throw new Error("Nome da categoria é obrigatório para exclusão por categoria.");
+        
+        // --- Lógica para remover todos os arquivos associados aos FAQs da categoria ---
+        const faqsInCategory = faqs.filter(faq => faq.category.toLowerCase() === proposal.categoryName?.toLowerCase());
+        for (const faq of faqsInCategory) {
+            // Remover imagens do corpo do texto
+            const imageUrls = extractImageUrlsFromMarkdown(faq.answer);
+            for (const url of imageUrls) {
+                await deleteFileFromServer(url);
+            }
+            // Remover anexos da lista de attachments
+            const attachmentUrls = (faq.attachments || []).map(att => att.url);
+            for (const url of attachmentUrls) {
+                await deleteFileFromServer(url);
+            }
+        }
+
         const successMessage = await faqService.deleteFAQsByCategory(proposal.categoryName);
         await fetchFaqs();
         return successMessage;
@@ -248,7 +299,6 @@ const AppContent: React.FC = () => {
   return (
     <div className="min-h-screen flex flex-col bg-slate-100">
       <Header />
-      {/* A classe 'container' e 'mx-auto' foram movidas para o elemento <main> */}
       <main className="flex-grow container mx-auto px-4 py-8 flex flex-col">
         {loadingFaqs ? (
           <div className="text-center text-slate-600">Carregando FAQs...</div>
@@ -285,6 +335,8 @@ const AppContent: React.FC = () => {
               onSaveEditedFAQ={handleSaveEditedFAQ}
               onCancel={() => navigate('/faqs')}
             />} />
+            {/* Rota para o Dashboard (comentada, se ainda não criada) */}
+            {/* <Route path="/dashboard" element={<DashboardSection />} /> */}
           </Routes>
         )}
       </main>

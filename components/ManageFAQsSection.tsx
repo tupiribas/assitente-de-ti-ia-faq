@@ -115,9 +115,37 @@ const ManageFAQsSection: React.FC<ManageFAQsSectionProps> = ({ onAddFAQ, faqToEd
     }
   };
 
-  const handleRemoveAttachment = (urlToRemove: string) => {
-    setAttachments(prev => prev.filter(att => att.url !== urlToRemove));
+  // MODIFICAÇÃO AQUI: handleRemoveAttachment agora é assíncrono e faz a requisição DELETE
+  const handleRemoveAttachment = async (urlToRemove: string) => {
+    // Extrai o nome do arquivo da URL para a requisição DELETE
+    const filename = urlToRemove.split('/').pop();
+    if (!filename) {
+      console.error("Não foi possível extrair o nome do arquivo da URL:", urlToRemove);
+      setError("Erro ao remover anexo: Nome do arquivo inválido.");
+      return;
+    }
+
+    try {
+      // Envia a requisição DELETE para o servidor
+      const response = await fetch(`/api/uploads/${filename}`, { method: 'DELETE' });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ message: response.statusText }));
+        throw new Error(errorData.message || `Falha ao remover arquivo do servidor: ${response.status}`);
+      }
+
+      // Se a exclusão no servidor foi bem-sucedida, atualiza o estado local
+      setAttachments(prev => prev.filter(att => att.url !== urlToRemove));
+      setSuccessMessage(`Anexo ${filename} removido com sucesso do servidor.`);
+      setTimeout(() => setSuccessMessage(null), 3000); // Limpa a mensagem após 3 segundos
+
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : "Erro desconhecido.";
+      setError(`Falha ao remover anexo: ${errorMessage}`);
+      setTimeout(() => setError(null), 5000); // Limpa a mensagem de erro
+    }
   };
+
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -181,7 +209,6 @@ const ManageFAQsSection: React.FC<ManageFAQsSectionProps> = ({ onAddFAQ, faqToEd
           <label htmlFor="faq-answer" className="block text-sm font-medium text-slate-700 mb-1">
             Resposta (Solução)
           </label>
-          {/* ALTERAÇÕES AQUI: Removido 'h-80', adicionado 'min-h-[200px]' e 'resize-y' */}
           <ReactQuill ref={quillRef} theme="snow" value={answer} onChange={setAnswer} modules={{ toolbar: [[{ 'header': [1, 2, false] }], ['bold', 'italic', 'underline', 'strike', 'blockquote'], [{ 'list': 'ordered' }, { 'list': 'bullet' }], ['link', 'image'], ['clean']] }} formats={['header', 'bold', 'italic', 'underline', 'strike', 'blockquote', 'list', 'bullet', 'link', 'image']} placeholder="Descreva a solução com formatação rica..." readOnly={isSubmitting || isUploading} className="w-full min-h-[200px] resize-y mb-10" />
         </div>
 
@@ -223,7 +250,7 @@ const ManageFAQsSection: React.FC<ManageFAQsSectionProps> = ({ onAddFAQ, faqToEd
           <button
             type="submit"
             form="manage-faq-form"
-            className="px-8 py-3 font-semibold text-white bg-orange-600 rounded-lg hover:bg-orange-700 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-offset-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed" disabled={isSubmitting || isUploading}
+            className="px-8 py-3 font-semibold text-white bg-orange-600 rounded-lg hover:bg-orange-700 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed" disabled={isSubmitting || isUploading}
           >
             {isSubmitting ? (faqToEdit ? 'Salvando...' : 'Adicionando...') : (faqToEdit ? 'Salvar Edição' : 'Adicionar FAQ')}
           </button>
