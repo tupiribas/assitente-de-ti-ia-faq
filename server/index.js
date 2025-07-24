@@ -4,7 +4,7 @@ const express = require('express');
 const fs = require('fs').promises;
 const path = require('path');
 const cors = require('cors');
-const { v4: uuidv4 } = require('uuid'); // Revertido para 'uuid' padrão pois @lukeed/uuid não estava em package.json
+const { v4: uuidv4 } = require('uuid');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const multer = require('multer');
 const pdf = require('pdf-parse');
@@ -57,10 +57,12 @@ const fileFilter = (req, file, cb) => {
         'application/pdf',
         'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
         'text/plain'
+        // REMOVIDO: 'video/mp4', 'video/webm', 'video/ogg'
     ];
     if (allowedMimeTypes.includes(file.mimetype)) {
         cb(null, true);
     } else {
+        // Mensagem de erro atualizada para refletir os tipos permitidos
         cb(new Error('Tipo de arquivo não permitido. Apenas imagens (JPG, PNG, GIF, WEBP), PDF, DOCX e TXT são suportados.'), false);
     }
 };
@@ -68,13 +70,14 @@ const fileFilter = (req, file, cb) => {
 const uploadFAQAsset = multer({
     storage: storageFAQAssets,
     fileFilter: fileFilter,
-    limits: { fileSize: 10 * 1024 * 1024 }
+    limits: { fileSize: 100 * 1024 * 1024 }
 });
 
 const storageChatImage = multer.memoryStorage();
 const uploadChatImage = multer({
     storage: storageChatImage,
-    limits: { fileSize: 10 * 1024 * 1024 }
+    fileFilter: fileFilter, // Usar o mesmo fileFilter para chat, para incluir vídeos e docs
+    limits: { fileSize: 100 * 1024 * 1024 }
 });
 
 app.use(cors());
@@ -145,8 +148,8 @@ app.delete('/api/uploads/:filename', async (req, res) => {
     const filePath = path.join(UPLOADS_DIR, filename);
 
     try {
-        await fs.access(filePath); // Verifica se o arquivo existe
-        await fs.unlink(filePath); // Exclui o arquivo
+        await fs.access(filePath);
+        await fs.unlink(filePath);
         console.log(`Arquivo ${filename} removido do servidor.`);
         res.status(200).json({ message: `Arquivo ${filename} removido com sucesso.` });
     } catch (error) {
@@ -238,7 +241,6 @@ async function extractTextFromTxt(filePath) {
     }
 }
 
-// Função para extrair URLs de imagens de conteúdo HTML (sem anotações de tipo)
 const extractImageUrlsFromHtml = (htmlText) => {
     const imageUrls = [];
     const imgRegex = /<img[^>]+src="(\/uploads\/[^"]+)"/g;
@@ -506,11 +508,21 @@ app.post('/api/ai-chat', uploadChatImage.single('image'), async (req, res) => {
         const imageFile = req.file;
 
         let currentAssetFileUrl = null;
+        let extractedFileText = null; // NOVO: Para texto extraído de PDF/DOCX/TXT
 
         if (imageFile) {
             const savedAssetInfo = await saveChatAssetToDisk(imageFile.buffer, imageFile.originalname, imageFile.mimetype);
             currentAssetFileUrl = savedAssetInfo.fileUrl;
             console.log("Server - Chat asset salvo em:", currentAssetFileUrl);
+
+            // NOVO: Tentar extrair texto se for PDF/DOCX/TXT
+            if (imageFile.mimetype === 'application/pdf') {
+                extractedFileText = await extractTextFromPdf(savedAssetInfo.filePath || path.join(UPLOADS_DIR, savedAssetInfo.filename));
+            } else if (imageFile.mimetype === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
+                extractedFileText = await extractTextFromDocx(savedAssetInfo.filePath || path.join(UPLOADS_DIR, savedAssetInfo.filename));
+            } else if (imageFile.mimetype === 'text/plain') {
+                extractedFileText = await extractTextFromTxt(savedAssetInfo.filePath || path.join(UPLOADS_DIR, savedAssetInfo.filename));
+            }
         }
 
         let formattedHistory = [];
@@ -536,11 +548,16 @@ app.post('/api/ai-chat', uploadChatImage.single('image'), async (req, res) => {
 
         let userMessageText = message || "";
         if (currentAssetFileUrl) {
+            // Adiciona a tag [ARQUIVO_ANEXADO]
             userMessageText += `\n\n[ARQUIVO_ANEXADO:${currentAssetFileUrl}]`;
+            // Se texto foi extraído, adicione-o como parte do conteúdo da mensagem para a IA
+            if (extractedFileText) {
+                userMessageText += `\n\n***CONTEÚDO_ANEXO_TEXTO:***\n${extractedFileText}\n***FIM_CONTEÚDO_ANEXO_TEXTO***\n`;
+            }
         }
         contentParts.push({ text: userMessageText });
 
-        if (imageFile) {
+        if (imageFile && imageFile.mimetype.startsWith('image/')) { // APENAS imagens são enviadas como inlineData
             const imageBase64 = imageFile.buffer.toString('base64');
             let normalizedMimeType = imageFile.mimetype;
             if (normalizedMimeType === 'image/jpg') {
@@ -617,7 +634,6 @@ app.get('/api/logs/ai-chat-activity', async (req, res) => {
     }
 });
 
-// NOVO ENDPOINT: Limpeza de arquivos órfãos
 app.delete('/api/cleanup-orphaned-files', async (req, res) => {
     const userIp = req.ip;
     const userAgent = req.headers['user-agent'];
@@ -626,7 +642,6 @@ app.delete('/api/cleanup-orphaned-files', async (req, res) => {
 
     try {
         const faqs = await loadFaqs();
-        // REMOVIDO: Anotação de tipo TypeScript
         const usedUrls = new Set();
 
         // 1. Coletar todas as URLs usadas de FAQs
@@ -656,9 +671,7 @@ app.delete('/api/cleanup-orphaned-files', async (req, res) => {
 
         let deletedCount = 0;
         let errorCount = 0;
-        // REMOVIDO: Anotação de tipo TypeScript
         const deletedFilesList = [];
-        // REMOVIDO: Anotação de tipo TypeScript
         const failedToDeleteList = [];
 
         // 3. Comparar e excluir arquivos órfãos
@@ -672,7 +685,7 @@ app.delete('/api/cleanup-orphaned-files', async (req, res) => {
                     console.log(`Arquivo órfão removido: ${file}`);
                     deletedCount++;
                     deletedFilesList.push(file);
-                } catch (unlinkError) { // REMOVIDO: Anotação de tipo TypeScript
+                } catch (unlinkError) {
                     console.error(`Erro ao remover arquivo órfão ${file}:`, unlinkError);
                     errorCount++;
                     failedToDeleteList.push(`${file} (${unlinkError.message})`);
@@ -697,7 +710,8 @@ app.get('/api/logs/faq-activity', async (req, res) => {
         await fs.access(LOG_FILE);
         const data = await fs.readFile(LOG_FILE, 'utf8');
         res.status(200).type('text/plain').send(data);
-    } catch (error) {
+    }
+    catch (error) {
         if (error.code === 'ENOENT') {
             return res.status(404).json({ message: 'Arquivo de log de atividades não encontrado.' });
         }
