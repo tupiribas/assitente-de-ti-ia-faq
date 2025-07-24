@@ -1,3 +1,5 @@
+// Em components/ChatInput.tsx
+
 import React, { useState } from 'react';
 import { PaperAirplaneIcon, PaperclipIcon } from './Icons'; // Certifique-se que PaperclipIcon está importado
 
@@ -6,19 +8,31 @@ interface ChatInputProps {
   isLoading: boolean;
 }
 
+// SVG do ícone de PDF (reutilizado para consistência)
+const PDF_ICON_SVG_ITEM = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="inline-block w-5 h-5 align-middle mr-1.5 text-red-600">
+  <path fill-rule="evenodd" d="M19.5 7.5V4.5H4.5A.75.75 0 0 0 3.75 5.25v14.5A.75.75 0 0 0 4.5 20.5h15a.75.75 0 0 0 .75-.75V8.25A.75.75 0 0 0 19.5 7.5ZM13.297 9.75a.75.75 0 0 0-.987-1.125l-3 2.25a.75.75 0 0 0-.174.457v3.393a.75.75 0 0 0 .75.75h2.25a.75.75 0 0 0 .75-.75v-2.25h1.5a.75.75 0 0 0 0-1.5h-1.5Z" clip-rule="evenodd" />
+</svg>`;
+
+// SVG do ícone de documento genérico (reutilizado para consistência)
+const DOCUMENT_ICON_SVG_ITEM = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="inline-block w-5 h-5 align-middle mr-1.5 text-slate-600">
+  <path fillRule="evenodd" d="M11.54 22.351l.07.035c.104.052.215.087.33.103.015.004.03.007.045.008a.75.75 0 00.352-.004l.05-.02.017-.008.002-.001a.75.75 0 00.1-.043c.095-.06.183-.127.265-.205L19.5 15.25V9.25L10.25 2.25H5.25A2.25 2.25 0 003 4.5v15.75A2.25 2.25 0 005.25 22.5h6.29Z" clipRule="evenodd" />
+  <path fillRule="evenodd" d="M12.25 15.25V5.5h4.167L12.25 2.25v13Z" clipRule="evenodd" />
+</svg>`;
+
+
 const ChatInput: React.FC<ChatInputProps> = ({ onSendMessage, isLoading }) => {
   const [inputText, setInputText] = useState('');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [filePreviewUrl, setFilePreviewUrl] = useState<string | null>(null);
 
-  const handleSubmit = async (e: React.FormEvent) => { // Tornar handleSubmit async
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if ((inputText.trim() || selectedFile) && !isLoading) {
-      onSendMessage(inputText, selectedFile); // Passa selectedFile
+      onSendMessage(inputText, selectedFile);
       setInputText('');
       setSelectedFile(null);
-      setFilePreviewUrl(null); // Limpa a pré-visualização após envio
-      const fileInput = document.getElementById('file-upload') as HTMLInputElement; // ID atualizado
+      setFilePreviewUrl(null);
+      const fileInput = document.getElementById('file-upload') as HTMLInputElement;
       if (fileInput) fileInput.value = '';
     }
   };
@@ -27,7 +41,6 @@ const ChatInput: React.FC<ChatInputProps> = ({ onSendMessage, isLoading }) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
       setSelectedFile(file);
-      // Cria URL para pré-visualização, independentemente do tipo de arquivo
       setFilePreviewUrl(URL.createObjectURL(file));
     } else {
       setSelectedFile(null);
@@ -35,14 +48,10 @@ const ChatInput: React.FC<ChatInputProps> = ({ onSendMessage, isLoading }) => {
     }
   };
 
-  // Função para remover o arquivo do servidor antes de enviar a mensagem do chat
   const handleRemoveFileBeforeSend = async () => {
     if (!filePreviewUrl || !selectedFile) return;
 
-    const filename = selectedFile.name; // Usamos o nome original do arquivo ou o nome do servidor se já tivermos
-    const fileUrlToDelete = filePreviewUrl; // A URL de preview pode ser a base para a URL real
-
-    // Extrai o nome real do arquivo se a URL for do tipo /uploads/nome-do-arquivo
+    const filename = selectedFile.name;
     const uploadedFilenameMatch = filePreviewUrl.match(/\/uploads\/(.+)$/);
     const filenameOnServer = uploadedFilenameMatch ? uploadedFilenameMatch[1] : null;
 
@@ -54,20 +63,17 @@ const ChatInput: React.FC<ChatInputProps> = ({ onSendMessage, isLoading }) => {
     }
 
     try {
-      // Envia a requisição DELETE para o servidor
       const response = await fetch(`/api/uploads/${filenameOnServer}`, { method: 'DELETE' });
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({ message: response.statusText }));
         console.error(`Falha ao remover arquivo ${filenameOnServer} do servidor: ${errorData.message}`);
-        // Mesmo se falhar no servidor, remove do frontend para a UX
       } else {
         console.log(`Arquivo ${filenameOnServer} removido com sucesso do servidor.`);
       }
     } catch (err) {
       console.error(`Erro ao tentar remover arquivo ${filenameOnServer}:`, err);
     } finally {
-      // Sempre limpa o estado do frontend, independentemente do sucesso do DELETE
       setSelectedFile(null);
       setFilePreviewUrl(null);
       const fileInput = document.getElementById('file-upload') as HTMLInputElement;
@@ -81,32 +87,33 @@ const ChatInput: React.FC<ChatInputProps> = ({ onSendMessage, isLoading }) => {
       <label htmlFor="file-upload" className="cursor-pointer p-2 rounded-lg hover:bg-slate-100 transition-colors">
         <PaperclipIcon className="w-6 h-6 text-slate-500" />
         <input
-          id="file-upload" // ID atualizado
+          id="file-upload"
           type="file"
-          // MODIFICADO: Removemos 'video/*' para não permitir vídeos
           accept="image/*,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain"
-          onChange={handleFileChange} // Chama handleFileChange
+          onChange={handleFileChange}
           className="hidden"
           disabled={isLoading}
         />
       </label>
 
-      {/* Exibir pré-visualização do arquivo e botão para remover */}
       {filePreviewUrl && (
         <div className="relative mr-2 flex items-center p-1 border border-slate-200 rounded-md bg-slate-50">
           {selectedFile?.type.startsWith('image/') ? (
             <img src={filePreviewUrl} alt="Pré-visualização" className="h-10 w-10 object-cover rounded-sm" />
           ) : (
-            // Ícone genérico para não-imagens (PDF, Doc, TXT, Vídeo)
-            <div className="h-10 w-10 flex items-center justify-center bg-blue-100 text-blue-700 rounded-sm font-bold text-xs">
-              {/* MODIFICADO: Não mostrar 'VID' para vídeos, pois não são permitidos */}
-              {selectedFile?.name.split('.').pop()?.toUpperCase() || 'FILE'}
+            // NOVO: Exibir ícone de PDF ou Documento Genérico para o preview no input
+            <div className="h-10 w-10 flex items-center justify-center rounded-sm font-bold text-xs">
+              {selectedFile?.type === 'application/pdf' ? (
+                <span dangerouslySetInnerHTML={{ __html: PDF_ICON_SVG_ITEM }} />
+              ) : (
+                <span dangerouslySetInnerHTML={{ __html: DOCUMENT_ICON_SVG_ITEM }} />
+              )}
             </div>
           )}
           <span className="ml-2 text-sm text-slate-700 truncate max-w-[120px]">{selectedFile?.name}</span>
           <button
             type="button"
-            onClick={handleRemoveFileBeforeSend} // Chama a nova função de remoção
+            onClick={handleRemoveFileBeforeSend}
             className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full h-5 w-5 flex items-center justify-center text-xs focus:outline-none"
             aria-label="Remover arquivo selecionado"
           >
