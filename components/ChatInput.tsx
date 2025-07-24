@@ -1,7 +1,7 @@
 // Em components/ChatInput.tsx
 
 import React, { useState } from 'react';
-import { PaperAirplaneIcon } from './Icons';
+import { PaperAirplaneIcon, PaperclipIcon } from './Icons'; // Certifique-se que PaperclipIcon está importado
 
 interface ChatInputProps {
   onSendMessage: (text: string, imageFile?: File | null) => void;
@@ -11,7 +11,7 @@ interface ChatInputProps {
 const ChatInput: React.FC<ChatInputProps> = ({ onSendMessage, isLoading }) => {
   const [inputText, setInputText] = useState('');
   const [selectedImage, setSelectedImage] = useState<File | null>(null);
-  const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null); // NOVO: Estado para URL de pré-visualização
+  const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -19,7 +19,7 @@ const ChatInput: React.FC<ChatInputProps> = ({ onSendMessage, isLoading }) => {
       onSendMessage(inputText, selectedImage);
       setInputText('');
       setSelectedImage(null);
-      setImagePreviewUrl(null); // Limpa a pré-visualização após envio
+      setImagePreviewUrl(null);
       const fileInput = document.getElementById('image-upload') as HTMLInputElement;
       if (fileInput) fileInput.value = '';
     }
@@ -29,7 +29,7 @@ const ChatInput: React.FC<ChatInputProps> = ({ onSendMessage, isLoading }) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
       setSelectedImage(file);
-      setImagePreviewUrl(URL.createObjectURL(file)); // Cria URL para pré-visualização
+      setImagePreviewUrl(URL.createObjectURL(file));
     } else {
       setSelectedImage(null);
       setImagePreviewUrl(null);
@@ -39,9 +39,8 @@ const ChatInput: React.FC<ChatInputProps> = ({ onSendMessage, isLoading }) => {
   return (
     <form onSubmit={handleSubmit} className="flex items-center p-2 border-t border-slate-100 bg-white rounded-b-lg">
       <label htmlFor="image-upload" className="cursor-pointer p-2 rounded-lg hover:bg-slate-100 transition-colors">
-        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6 text-slate-500">
-          <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 15.75l1.5 1.5.356-.356A4.5 4.5 0 009.557 18h2.292a4.5 4.5 0 004.29-2.203l.111-.133.296-.355A4.5 4.5 0 0021.75 12V8.25m0 0h-3.879a1.125 1.125 0 01-.976-.642L16.3 4.757A1.125 1.125 0 0015.322 4.125H8.773c-.57 0-1.059.387-1.192.924L5.617 7.03c-.392.656-.164 1.447.387 1.776l.128.097H16.5M18 12a2.25 2.25 0 100 4.5 2.25 2.25 0 000-4.5z" />
-        </svg>
+        {/* ÍCONE CORRIGIDO: Agora usando o PaperclipIcon verdadeiro */}
+        <PaperclipIcon className="w-6 h-6 text-slate-500" />
         <input
           id="image-upload"
           type="file"
@@ -52,7 +51,6 @@ const ChatInput: React.FC<ChatInputProps> = ({ onSendMessage, isLoading }) => {
         />
       </label>
 
-      {/* NOVO: Exibir pré-visualização da imagem e botão para remover */}
       {imagePreviewUrl && (
         <div className="relative mr-2">
           <img src={imagePreviewUrl} alt="Pré-visualização" className="h-16 w-16 object-cover rounded-md border border-slate-200" />
@@ -66,20 +64,6 @@ const ChatInput: React.FC<ChatInputProps> = ({ onSendMessage, isLoading }) => {
           </button>
         </div>
       )}
-      {/* Remover o span anterior que só mostrava o nome do arquivo, pois a pré-visualização o substitui. */}
-      {/* {selectedImage && (
-        <span className="text-sm text-slate-600 mr-2 flex items-center">
-          {selectedImage.name}
-          <button
-            type="button"
-            onClick={() => setSelectedImage(null)}
-            className="ml-1 text-red-500 hover:text-red-700 focus:outline-none"
-            aria-label="Remover imagem selecionada"
-          >
-            &times;
-          </button>
-        </span>
-      )} */}
 
       <textarea
         value={inputText}
