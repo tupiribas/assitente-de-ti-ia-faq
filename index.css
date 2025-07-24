@@ -2,6 +2,13 @@
 @tailwind components;
 @tailwind utilities;
 
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
 /* Seus estilos CSS personalizados abaixo */
 body {
   font-family: 'Inter', sans-serif;

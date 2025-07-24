@@ -246,9 +246,10 @@ const AppContent: React.FC = () => {
 
 
   return (
-    <div className="min-h-screen flex flex-col">
+    <div className="min-h-screen flex flex-col bg-slate-100">
       <Header />
-      <main className="flex-grow px-4 py-8">
+      {/* A classe 'container' e 'mx-auto' foram movidas para o elemento <main> */}
+      <main className="flex-grow container mx-auto px-4 py-8 flex flex-col">
         {loadingFaqs ? (
           <div className="text-center text-slate-600">Carregando FAQs...</div>
         ) : (
@@ -276,13 +277,13 @@ const AppContent: React.FC = () => {
               faqs={faqs}
               onAddFAQ={addFAQ}
               onSaveEditedFAQ={handleSaveEditedFAQ}
-              onCancel={() => navigate('/faqs')} // <--- A correção está aqui
+              onCancel={() => navigate('/faqs')}
             />} />
             <Route path="/manage-faq/:id" element={<FAQManagePage
               faqs={faqs}
               onAddFAQ={addFAQ}
               onSaveEditedFAQ={handleSaveEditedFAQ}
-              onCancel={() => navigate('/faqs')} // <--- A correção está aqui
+              onCancel={() => navigate('/faqs')}
             />} />
           </Routes>
         )}
