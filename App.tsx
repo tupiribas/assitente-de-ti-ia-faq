@@ -33,7 +33,7 @@ const extractImageUrlsFromHtml = (htmlText: string): string[] => {
 // Isso pode ser usado para obter todas as imagens de um FAQ, independentemente de estarem em Markdown ou HTML.
 // Considerando que o Quill gera HTML, esta é a função primária para imagens.
 const getImageUrlsFromFAQAnswer = (answer: string): string[] => {
-    return extractImageUrlsFromHtml(answer);
+  return extractImageUrlsFromHtml(answer);
 };
 
 
@@ -162,7 +162,7 @@ const AppContent: React.FC = () => {
   const handleSaveEditedFAQ = useCallback(async (formData: FormData, faqId: string) => {
     try {
       console.log("[App.tsx - handleSaveEditedFAQ]: Iniciando salvamento de FAQ editado.");
-      
+
       const newAnswer = formData.get('answer') as string; // Obtenha a nova resposta do FormData
       const newAttachmentsData = formData.get('_attachmentsData') as string;
       const newAttachments: FAQAttachment[] = newAttachmentsData ? JSON.parse(newAttachmentsData) : [];
@@ -178,7 +178,7 @@ const AppContent: React.FC = () => {
         if (oldFaq.answer && newAnswer !== undefined) {
           const oldImageUrls = getImageUrlsFromFAQAnswer(oldFaq.answer);
           const newImageUrls = getImageUrlsFromFAQAnswer(newAnswer); // Usa a nova resposta do FormData
-          
+
           console.log("DEBUG: URLs de imagens antigas extraídas:", oldImageUrls);
           console.log("DEBUG: URLs de imagens novas extraídas:", newImageUrls);
 
@@ -213,7 +213,7 @@ const AppContent: React.FC = () => {
       // Agora, realmente atualiza o FAQ no servidor
       await faqService.updateFAQ(formData, faqId);
       console.log(`[App.tsx - handleSaveEditedFAQ]: FAQ ${faqId} atualizado com sucesso no serviço.`);
-      
+
       // Recarrega os FAQs para atualizar o estado do app
       await fetchFaqs();
     } catch (error) {
@@ -281,7 +281,7 @@ const AppContent: React.FC = () => {
 
         if (faqToDeleteCompletely) {
           console.log("[App.tsx - handleFaqAction (delete)]: faqToDeleteCompletely encontrado.", faqToDeleteCompletely);
-          
+
           // --- Lógica para remover imagens do corpo do texto (HTML) ---
           const imageUrlsInAnswer = getImageUrlsFromFAQAnswer(faqToDeleteCompletely.answer); // USA A NOVA FUNÇÃO
           console.log("[App.tsx - handleFaqAction (delete)]: Imagens HTML no FAQ para exclusão:", imageUrlsInAnswer);
@@ -307,23 +307,23 @@ const AppContent: React.FC = () => {
         // Cenário de exclusão por categoria
         console.log("[App.tsx - handleFaqAction]: Ação 'deleteCategory' iniciada.");
         if (!proposal.categoryName) throw new Error("Nome da categoria é obrigatório para exclusão por categoria.");
-        
+
         // --- Lógica para remover todos os arquivos associados aos FAQs da categoria ---
         const faqsInCategory = faqs.filter(faq => faq.category.toLowerCase() === proposal.categoryName?.toLowerCase());
         console.log("[App.tsx - handleFaqAction (deleteCategory)]: FAQs na categoria para exclusão:", faqsInCategory);
         for (const faq of faqsInCategory) {
-            // Remover imagens do corpo do texto (HTML)
-            const imageUrls = getImageUrlsFromFAQAnswer(faq.answer); // USA A NOVA FUNÇÃO
-            console.log(`[App.tsx - handleFaqAction (deleteCategory)]: Imagens HTML do FAQ ${faq.id} para exclusão:`, imageUrls);
-            for (const url of imageUrls) {
-                await deleteFileFromServer(url);
-            }
-            // Remover anexos da lista de attachments
-            const attachmentUrls = (faq.attachments || []).map(att => att.url);
-            console.log(`[App.tsx - handleFaqAction (deleteCategory)]: Anexos do FAQ ${faq.id} para exclusão:`, attachmentUrls);
-            for (const url of attachmentUrls) {
-                await deleteFileFromServer(url);
-            }
+          // Remover imagens do corpo do texto (HTML)
+          const imageUrls = getImageUrlsFromFAQAnswer(faq.answer); // USA A NOVA FUNÇÃO
+          console.log(`[App.tsx - handleFaqAction (deleteCategory)]: Imagens HTML do FAQ ${faq.id} para exclusão:`, imageUrls);
+          for (const url of imageUrls) {
+            await deleteFileFromServer(url);
+          }
+          // Remover anexos da lista de attachments
+          const attachmentUrls = (faq.attachments || []).map(att => att.url);
+          console.log(`[App.tsx - handleFaqAction (deleteCategory)]: Anexos do FAQ ${faq.id} para exclusão:`, attachmentUrls);
+          for (const url of attachmentUrls) {
+            await deleteFileFromServer(url);
+          }
         }
 
         const successMessage = await faqService.deleteFAQsByCategory(proposal.categoryName);
