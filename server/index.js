@@ -593,7 +593,9 @@ app.post('/api/ai-chat', uploadChatImage.single('image'), async (req, res) => {
         });
 
         const result = await chatSession.sendMessage(contentParts);
+        console.log("DEBUG: Resposta BRUTA da API Gemini (result):", JSON.stringify(result)); // Adicione este log
         let aiResponseText = result.response.text();
+        console.log("DEBUG: Texto extraído da resposta Gemini (aiResponseText):", aiResponseText); // Adicione este log
 
         let questionDetailLevel = null;
         const detailLevelRegex = /\[QUESTION_DETAIL_LEVEL:(Baixo|Médio|Alto)\]/i;
