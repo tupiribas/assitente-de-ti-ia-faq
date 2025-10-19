@@ -9,6 +9,9 @@ primary_region = 'gru'
 [build]
   dockerfile = './Dockerfile'
 
+[deploy]
+  release_command = "node /app/server/migrate-json-to-pg.js"
+
 [[mounts]]
   source = 'faq_data'
   destination = '/app/data'

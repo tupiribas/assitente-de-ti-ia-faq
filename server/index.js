@@ -1,7 +1,7 @@
 require('dotenv').config({ path: require('path').resolve(__dirname, '..', '.env.local') });
 
 const express = require('express');
-const fs = require('fs').promises;
+const fs = require('fs').promises; // Manter para logs e uploads
 const path = require('path');
 const cors = require('cors');
 const { v4: uuidv4 } = require('uuid');
@@ -10,8 +10,36 @@ const multer = require('multer');
 const pdf = require('pdf-parse');
 const mammoth = require('mammoth');
 const util = require('util');
+const { Pool } = require('pg'); // <-- ADICIONADO
 
 const { GEMINI_MODEL_NAME, AI_SYSTEM_INSTRUCTION } = require('./build/constants');
+
+// --- Configuração do Banco de Dados ADICIONADA ---
+const connectionString = process.env.DATABASE_URL;
+if (!connectionString) {
+    console.error("ERRO CRÍTICO: Variável de ambiente DATABASE_URL não definida!");
+    // Em produção, talvez parar: process.exit(1);
+} else {
+    console.log("DATABASE_URL encontrada. Configurando pool de conexões PostgreSQL...");
+}
+
+const pool = new Pool({
+  connectionString: connectionString,
+  // Configurações SSL podem ser necessárias dependendo do ambiente, mas Fly.io geralmente funciona
+//   ssl: {
+//     rejectUnauthorized: false // Use com cuidado
+//   }
+});
+
+// Testar conexão (opcional, ADICIONADO)
+pool.query('SELECT NOW()', (err, res) => {
+  if (err) {
+    console.error('Erro ao conectar ao PostgreSQL:', err);
+  } else {
+    console.log('Conectado ao PostgreSQL:', res ? res.rows[0].now : 'sem resposta');
+  }
+});
+// --- Fim Configuração Banco de Dados ---
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 
@@ -32,13 +60,14 @@ const IS_PRODUCTION = process.env.NODE_ENV === 'production';
 const DATA_BASE_DIR = IS_PRODUCTION ? '/app/data' : path.join(__dirname, '..', 'data');
 const UPLOADS_DIR = IS_PRODUCTION ? path.join('/app/data', 'uploads') : path.join(__dirname, '..', 'public', 'uploads');
 
-const FAQS_FILE = path.join(DATA_BASE_DIR, 'faqs.json');
+// REMOVIDO: const FAQS_FILE = path.join(DATA_BASE_DIR, 'faqs.json');
 const LOG_FILE = path.join(DATA_BASE_DIR, 'faq_activity.log');
 const CHAT_LOG_FILE = path.join(DATA_BASE_DIR, 'ai_chat_log.log');
 const UPLOADS_SERVE_PATH = '/uploads';
 
 const frontendBuildPath = path.join(__dirname, '..', 'public');
 
+// --- Configuração do Multer (sem alterações) ---
 const storageFAQAssets = multer.diskStorage({
     destination: async (req, file, cb) => {
         await fs.mkdir(UPLOADS_DIR, { recursive: true }).catch(console.error);
@@ -57,12 +86,10 @@ const fileFilter = (req, file, cb) => {
         'application/pdf',
         'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
         'text/plain'
-        // REMOVIDO: 'video/mp4', 'video/webm', 'video/ogg'
     ];
     if (allowedMimeTypes.includes(file.mimetype)) {
         cb(null, true);
     } else {
-        // Mensagem de erro atualizada para refletir os tipos permitidos
         cb(new Error('Tipo de arquivo não permitido. Apenas imagens (JPG, PNG, GIF, WEBP), PDF, DOCX e TXT são suportados.'), false);
     }
 };
@@ -76,16 +103,23 @@ const uploadFAQAsset = multer({
 const storageChatImage = multer.memoryStorage();
 const uploadChatImage = multer({
     storage: storageChatImage,
-    fileFilter: fileFilter, // Usar o mesmo fileFilter para chat, para incluir vídeos e docs
+    fileFilter: fileFilter,
     limits: { fileSize: 100 * 1024 * 1024 }
 });
+// --- Fim Configuração Multer ---
 
+// --- Middlewares Globais ---
 app.use(cors());
-app.set('trust proxy', true);
+app.set('trust proxy', true); // Importante para obter IP correto atrás de proxies como o do Fly.io
+app.use(express.json()); // Middleware para parsear JSON bodies (necessário para PUT /category/rename)
+// --- Fim Middlewares Globais ---
 
-app.use(UPLOADS_SERVE_PATH, express.static(UPLOADS_DIR));
-app.use(express.static(frontendBuildPath));
+// --- Servir Arquivos Estáticos ---
+app.use(UPLOADS_SERVE_PATH, express.static(UPLOADS_DIR)); // Servir uploads
+app.use(express.static(frontendBuildPath)); // Servir o build do frontend
+// --- Fim Servir Arquivos Estáticos ---
 
+// --- Funções de Log (sem alterações) ---
 const logActivity = async (action, faqId, details, ip, userAgent, userId = 'anonymous') => {
     const timestamp = new Date().toISOString();
     const logEntry = `[${timestamp}] [USER_ID: ${userId}] [IP: ${ip}] [USER_AGENT: ${userAgent}] ACTION: ${action} FAQ_ID: ${faqId} DETAILS: ${JSON.stringify(details)}\n`;
@@ -109,15 +143,15 @@ const logAIChatInteraction = async (userQuestion, aiResponse, detailLevel, ip, u
         console.error('Erro ao escrever no arquivo de log de chat da IA:', error);
     }
 };
+// --- Fim Funções de Log ---
 
+// --- Rotas de Upload e Exclusão de Arquivos (sem alterações na lógica principal) ---
 app.post('/api/upload-asset', uploadFAQAsset.single('file'), async (req, res) => {
     if (!req.file) {
         return res.status(400).json({ message: 'Nenhum arquivo enviado.' });
     }
-
     const fileUrl = `${UPLOADS_SERVE_PATH}/${req.file.filename}`;
     let extractedText = null;
-
     try {
         if (req.file.mimetype === 'application/pdf') {
             extractedText = await extractTextFromPdf(req.file.path);
@@ -126,30 +160,24 @@ app.post('/api/upload-asset', uploadFAQAsset.single('file'), async (req, res) =>
         } else if (req.file.mimetype === 'text/plain') {
             extractedText = await extractTextFromTxt(req.file.path);
         }
-
-        res.status(200).json({
-            fileUrl: fileUrl,
-            extractedText: extractedText
-        });
-
+        res.status(200).json({ fileUrl: fileUrl, extractedText: extractedText });
     } catch (error) {
         console.error(`Erro no processamento do arquivo ${req.file.filename}:`, error);
-        try {
-            await fs.unlink(req.file.path);
-        } catch (unlinkError) {
-            console.error(`Erro ao remover arquivo parcial ${req.file.filename}:`, unlinkError);
-        }
+        try { await fs.unlink(req.file.path); } catch (unlinkError) { console.error(`Erro ao remover arquivo parcial ${req.file.filename}:`, unlinkError); }
         res.status(500).json({ message: `Erro ao processar o arquivo: ${error.message}` });
     }
 });
 
 app.delete('/api/uploads/:filename', async (req, res) => {
     const { filename } = req.params;
+    // Validar filename para evitar path traversal
+    if (filename.includes('/') || filename.includes('..')) {
+        return res.status(400).json({ message: 'Nome de arquivo inválido.' });
+    }
     const filePath = path.join(UPLOADS_DIR, filename);
-
     try {
-        await fs.access(filePath);
-        await fs.unlink(filePath);
+        await fs.access(filePath); // Verifica se existe
+        await fs.unlink(filePath); // Tenta remover
         console.log(`Arquivo ${filename} removido do servidor.`);
         res.status(200).json({ message: `Arquivo ${filename} removido com sucesso.` });
     } catch (error) {
@@ -160,39 +188,15 @@ app.delete('/api/uploads/:filename', async (req, res) => {
         res.status(500).json({ message: `Erro ao remover arquivo ${filename}: ${error.message}` });
     }
 });
+// --- Fim Rotas de Upload/Exclusão ---
 
-const loadFaqs = async () => {
-    try {
-        await fs.access(FAQS_FILE);
-        const data = await fs.readFile(FAQS_FILE, 'utf8');
-        return JSON.parse(data);
-    } catch (error) {
-        if (error.code === 'ENOENT') {
-            console.log('Arquivo faqs.json não encontrado. Inicializando com FAQs vazios.');
-            return [];
-        }
-        console.error('Erro ao ler FAQs do arquivo:', error);
-        return [];
-    }
-};
-
-const saveFaqs = async (faqs) => {
-    try {
-        await fs.mkdir(path.dirname(FAQS_FILE), { recursive: true }).catch(console.error);
-        await fs.writeFile(FAQS_FILE, JSON.stringify(faqs, null, 2), 'utf8');
-        console.log('FAQs salvos com sucesso.');
-    } catch (error) {
-        console.error('Erro ao salvar FAQs no arquivo:', error);
-        throw new Error('Falha ao salvar FAQs.');
-    }
-};
-
+// --- Funções Auxiliares de Extração de Texto e Imagem (sem alterações) ---
 async function extractTextFromPdf(filePath) {
     try {
         const dataBuffer = await fs.readFile(filePath);
         const data = await pdf(dataBuffer);
-        let cleanedText = data.text.replace(/[\uFFFD]/g, '');
-        cleanedText = cleanedText.replace(/\s+/g, ' ').trim();
+        let cleanedText = data.text.replace(/[\uFFFD]/g, ''); // Remove replacement character
+        cleanedText = cleanedText.replace(/\s+/g, ' ').trim(); // Normaliza espaços
         return cleanedText;
     } catch (error) {
         console.error(`Erro ao extrair texto do PDF ${filePath}:`, error);
@@ -206,16 +210,18 @@ const saveChatAssetToDisk = async (fileBuffer, originalname, mimetype) => {
             await fs.mkdir(UPLOADS_DIR, { recursive: true }).catch(console.error);
             const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
             const fileExtension = path.extname(originalname);
-            const filename = `chat-asset-${uniqueSuffix}${fileExtension}`;
+            // Sanitizar nome do arquivo original (exemplo básico)
+            const safeOriginalNameBase = path.basename(originalname, fileExtension).replace(/[^a-zA-Z0-9_-]/g, '_');
+            const filename = `${safeOriginalNameBase}-${uniqueSuffix}${fileExtension}`;
             const filePath = path.join(UPLOADS_DIR, filename);
-
             await fs.writeFile(filePath, fileBuffer);
-            resolve({ fileUrl: `${UPLOADS_SERVE_PATH}/${filename}`, filename: filename });
+            resolve({ fileUrl: `${UPLOADS_SERVE_PATH}/${filename}`, filename: filename, filePath: filePath }); // Retorna filePath
         } catch (error) {
             reject(error);
         }
     });
 };
+
 
 async function extractTextFromDocx(filePath) {
     try {
@@ -242,194 +248,225 @@ async function extractTextFromTxt(filePath) {
 }
 
 const extractImageUrlsFromHtml = (htmlText) => {
+    if (!htmlText) return [];
     const imageUrls = [];
     const imgRegex = /<img[^>]+src="(\/uploads\/[^"]+)"/g;
     let match;
     while ((match = imgRegex.exec(htmlText)) !== null) {
-        imageUrls.push(match[1]);
+        if (match[1]) {
+            imageUrls.push(match[1]);
+        }
     }
     return imageUrls;
 };
+// --- Fim Funções Auxiliares ---
 
-
-const isServiceTime = () => {
-    return true;
-};
-
+// --- Limitação de Requisições IA (sem alterações) ---
 const requestCounts = new Map();
-const MAX_REQUESTS_PER_HOUR = 50;
-const RESET_INTERVAL_MS = 60 * 60 * 1000;
+const MAX_REQUESTS_PER_HOUR = 50; // Ajuste conforme necessário
+const RESET_INTERVAL_MS = 60 * 60 * 1000; // 1 hora
 
 setInterval(() => {
     requestCounts.clear();
     console.log("Contadores de requisições de IA resetados.");
 }, RESET_INTERVAL_MS);
+// --- Fim Limitação ---
+
+
+// --- ROTAS CRUD DE FAQS (SUBSTITUÍDAS) ---
 
 app.get('/api/faqs', async (req, res) => {
     try {
-        const faqs = await loadFaqs();
+        const query = `
+        SELECT
+            f.id, f.question, f.answer, f.category, f.document_text as "documentText",
+            f.created_at as "createdAt", f.updated_at as "updatedAt",
+            COALESCE(
+            (SELECT json_agg(
+                json_build_object(
+                'id', a.id, 'url', a.url, 'name', a.name,
+                'extension', a.extension, 'type', a.type
+                ) ORDER BY a.created_at ASC
+            )
+            FROM attachments a WHERE a.faq_id = f.id),
+            '[]'::json
+            ) as attachments
+        FROM faqs f
+        ORDER BY f.created_at DESC;
+        `;
+        const result = await pool.query(query);
+        const faqs = result.rows.map(row => ({
+            ...row,
+            documentText: row.documentText,
+            createdAt: row.createdAt,
+            updatedAt: row.updatedAt,
+        }));
         res.json(faqs);
     } catch (error) {
+        console.error('Erro ao buscar FAQs do DB:', error);
         res.status(500).json({ message: 'Erro ao carregar FAQs.' });
     }
 });
 
 app.post('/api/faqs', multer().none(), async (req, res) => {
-    console.log('Backend - FULL req.body antes de desestruturar (POST):', JSON.stringify(req.body, null, 2));
-
-    if (!req.body) {
-        return res.status(400).json({ message: 'Corpo da requisição ausente ou malformado. Verifique o Content-Type.' });
-    }
-
-    const question = req.body.question;
-    const answer = req.body.answer;
-    const category = req.body.category;
-    const documentText = req.body.documentText || undefined;
-    const _attachmentsData = req.body._attachmentsData;
-
-    let parsedAttachments;
-    if (typeof _attachmentsData === 'string') {
+    // Usar .none() pois os arquivos vêm de /api/upload-asset, aqui só vem os dados
+    const { question, answer, category, documentText } = req.body;
+    const _attachmentsData = req.body._attachmentsData; // Espera uma string JSON
+    let parsedAttachments = [];
+    if (_attachmentsData) {
         try {
             parsedAttachments = JSON.parse(_attachmentsData);
+            if (!Array.isArray(parsedAttachments)) parsedAttachments = []; // Garante que é array
         } catch (e) {
             console.error('Erro ao parsear _attachmentsData (POST):', e);
-            parsedAttachments = [];
+            return res.status(400).json({ message: 'Formato inválido para _attachmentsData.' });
         }
-    } else {
-        parsedAttachments = [];
     }
-
-    console.log('Dados do FAQ recebidos no backend (POST):', { question, answer, category, _attachmentsData, documentText });
-    console.log('Backend POST - parsedAttachments (garantido array):', parsedAttachments);
-
     const userIp = req.ip;
     const userAgent = req.headers['user-agent'];
     const userId = req.headers['x-user-id'] || 'anonymous';
 
     if (!question || !answer || !category) {
-        return res.status(400).json({ message: 'Todos os campos (Pergunta, Resposta, Categoria) são obrigatórios.' });
+        return res.status(400).json({ message: 'Pergunta, Resposta e Categoria são obrigatórios.' });
     }
 
+    const client = await pool.connect();
     try {
-        const faqs = await loadFaqs();
-        const newFaq = { id: uuidv4(), question, answer, category, attachments: parsedAttachments, documentText };
-        faqs.unshift(newFaq);
-        await saveFaqs(faqs);
+        await client.query('BEGIN');
 
-        await logActivity('ADD_FAQ', newFaq.id, { question, category, attachments: parsedAttachments }, userIp, userAgent, userId);
+        const faqId = uuidv4();
+        const insertFaqQuery = `
+        INSERT INTO faqs (id, question, answer, category, document_text)
+        VALUES ($1, $2, $3, $4, $5)
+        RETURNING id, question, answer, category, document_text, created_at, updated_at;
+        `;
+        const faqResult = await client.query(insertFaqQuery, [faqId, question, answer, category, documentText || null]);
+        const newDbFaq = faqResult.rows[0];
 
-        const reloadedFaqs = await loadFaqs();
-        const savedFaq = reloadedFaqs.find(f => f.id === newFaq.id);
-
-        if (savedFaq) {
-            res.status(201).json(savedFaq);
-        } else {
-            console.error(`Erro: FAQ ${newFaq.id} não encontrado após recarga do disco.`);
-            res.status(500).json({ message: 'Erro interno ao adicionar e verificar FAQ.' });
+        // Inserir anexos validados
+        if (parsedAttachments.length > 0) {
+        const insertAttachmentQuery = `
+            INSERT INTO attachments (faq_id, url, name, extension, type)
+            VALUES ($1, $2, $3, $4, $5);
+        `;
+        for (const att of parsedAttachments) {
+            // Validação básica dos campos do anexo
+            if (att.url && att.name && att.extension && att.type && ['image', 'document'].includes(att.type)) {
+               await client.query(insertAttachmentQuery, [newDbFaq.id, att.url, att.name, att.extension, att.type]);
+            } else {
+               console.warn(`Anexo inválido ignorado durante criação do FAQ ${newDbFaq.id}:`, att);
+            }
+        }
         }
 
+        await client.query('COMMIT');
+
+        await logActivity('ADD_FAQ', newDbFaq.id, { question, category, attachmentsCount: parsedAttachments.length }, userIp, userAgent, userId);
+
+        // Montar resposta
+        const createdFaqResponse = {
+            id: newDbFaq.id,
+            question: newDbFaq.question,
+            answer: newDbFaq.answer,
+            category: newDbFaq.category,
+            documentText: newDbFaq.document_text,
+            createdAt: newDbFaq.created_at,
+            updatedAt: newDbFaq.updated_at,
+            attachments: parsedAttachments.filter(att => att.url && att.name && att.extension && att.type) // Envia apenas os válidos
+        };
+
+        res.status(201).json(createdFaqResponse);
+
     } catch (error) {
-        console.error(`Erro ao adicionar FAQ:`, error);
+        await client.query('ROLLBACK');
+        console.error(`Erro ao adicionar FAQ no DB:`, error);
         res.status(500).json({ message: 'Erro ao adicionar FAQ.' });
+    } finally {
+        client.release();
     }
 });
 
 app.put('/api/faqs/:id', multer().none(), async (req, res) => {
-    console.log('Backend - FULL req.body antes de desestruturar (PUT):', JSON.stringify(req.body, null, 2));
-
     const { id } = req.params;
-    const question = req.body.question;
-    const answer = req.body.answer;
-    const category = req.body.category;
-    const documentText = req.body.documentText || undefined;
+    const { question, answer, category, documentText } = req.body;
     const _attachmentsData = req.body._attachmentsData;
-
-    let parsedAttachments;
-    if (typeof _attachmentsData === 'string') {
+    let parsedAttachments = [];
+     if (_attachmentsData) {
         try {
             parsedAttachments = JSON.parse(_attachmentsData);
+            if (!Array.isArray(parsedAttachments)) parsedAttachments = [];
         } catch (e) {
-            console.error('Erro ao parsear _attachmentsData (PUT):', e);
-            parsedAttachments = [];
+             console.error('Erro ao parsear _attachmentsData (PUT):', e);
+             return res.status(400).json({ message: 'Formato inválido para _attachmentsData.' });
         }
-    } else {
-        parsedAttachments = [];
     }
-
-    console.log('Backend - _attachmentsData recebido (frontend enviou):', _attachmentsData);
-    console.log('Backend - parsedAttachments (garantido array):', parsedAttachments);
-
     const userIp = req.ip;
     const userAgent = req.headers['user-agent'];
     const userId = req.headers['x-user-id'] || 'anonymous';
+
 
     if (!question || !answer || !category) {
-        return res.status(400).json({ message: 'Todos os campos (Pergunta, Resposta e Categoria) são obrigatórios para atualização.' });
+        return res.status(400).json({ message: 'Pergunta, Resposta e Categoria são obrigatórios.' });
     }
 
+    const client = await pool.connect();
     try {
-        let faqs = await loadFaqs();
-        console.log('Backend - FAQs carregados do disco (antes da modificação):', faqs);
+        await client.query('BEGIN');
 
-        const faqIndex = faqs.findIndex(faq => faq.id === id);
+        const updateFaqQuery = `
+        UPDATE faqs
+        SET question = $1, answer = $2, category = $3, document_text = $4, updated_at = CURRENT_TIMESTAMP
+        WHERE id = $5
+        RETURNING id, question, answer, category, document_text, created_at, updated_at;
+        `;
+        const faqResult = await client.query(updateFaqQuery, [question, answer, category, documentText || null, id]);
 
-        if (faqIndex === -1) {
-            console.error('Backend - Erro: FAQ não encontrado para atualização:', id);
+        if (faqResult.rowCount === 0) {
+            await client.query('ROLLBACK');
             return res.status(404).json({ message: `FAQ com ID ${id} não encontrado.` });
         }
+        const updatedDbFaq = faqResult.rows[0];
 
-        const updatedFaqData = { id, question, answer, category, attachments: parsedAttachments, documentText };
-        faqs[faqIndex] = updatedFaqData;
-
-        console.log('Backend - faqs[faqIndex] (após atualização em memória, antes de salvar):', faqs[faqIndex]);
-
-        await saveFaqs(faqs);
-        console.log('Backend - saveFaqs executado. Dados salvos.');
-
-        const reloadedFaqs = await loadFaqs();
-        const savedFaq = reloadedFaqs.find(f => f.id === id);
-
-        console.log('Backend - savedFaq (objeto recarregado do disco):', savedFaq);
-
-        if (savedFaq) {
-            res.status(200).json(savedFaq);
-        } else {
-            console.error(`Backend - Erro: FAQ ${id} não encontrado após recarga do disco.`);
-            res.status(500).json({ message: 'Erro interno ao atualizar e verificar FAQ.' });
+        // Re-sincronizar anexos (excluir antigos, inserir novos válidos)
+        await client.query('DELETE FROM attachments WHERE faq_id = $1', [id]);
+        if (parsedAttachments.length > 0) {
+            const insertAttachmentQuery = `
+                INSERT INTO attachments (faq_id, url, name, extension, type)
+                VALUES ($1, $2, $3, $4, $5);
+            `;
+            for (const att of parsedAttachments) {
+                 if (att.url && att.name && att.extension && att.type && ['image', 'document'].includes(att.type)) {
+                    await client.query(insertAttachmentQuery, [id, att.url, att.name, att.extension, att.type]);
+                 } else {
+                    console.warn(`Anexo inválido ignorado durante atualização do FAQ ${id}:`, att);
+                 }
+            }
         }
 
-        await logActivity('UPDATE_FAQ', id, { old: { question: faqs[faqIndex].question, category: faqs[faqIndex].category, attachments: faqs[faqIndex].attachments }, new: { question, category, attachments: parsedAttachments } }, userIp, userAgent, userId);
+        await client.query('COMMIT');
+
+        await logActivity('UPDATE_FAQ', id, { question, category, attachmentsCount: parsedAttachments.length }, userIp, userAgent, userId);
+
+        // Montar resposta consistente
+         const updatedFaqResponse = {
+            id: updatedDbFaq.id,
+            question: updatedDbFaq.question,
+            answer: updatedDbFaq.answer,
+            category: updatedDbFaq.category,
+            documentText: updatedDbFaq.document_text,
+            createdAt: updatedDbFaq.created_at,
+            updatedAt: updatedDbFaq.updated_at,
+            attachments: parsedAttachments.filter(att => att.url && att.name && att.extension && att.type) // Envia apenas os válidos
+        };
+
+        res.status(200).json(updatedFaqResponse);
 
     } catch (error) {
-        console.error(`Backend - Erro CRÍTICO ao atualizar FAQ com ID ${id}:`, error);
+        await client.query('ROLLBACK');
+        console.error(`Erro ao atualizar FAQ ${id} no DB:`, error);
         res.status(500).json({ message: 'Erro ao atualizar FAQ.' });
-    }
-});
-
-app.delete('/api/faqs/category/:categoryName', async (req, res) => {
-    const { categoryName } = req.params;
-    const userIp = req.ip;
-    const userAgent = req.headers['user-agent'];
-    const userId = req.headers['x-user-id'] || 'anonymous';
-
-    try {
-        let faqs = await loadFaqs();
-        const initialLength = faqs.length;
-        const deletedFaqsCount = faqs.filter(faq => faq.category.toLowerCase() === categoryName.toLowerCase()).length;
-        faqs = faqs.filter(faq => faq.category.toLowerCase() !== categoryName.toLowerCase());
-
-        if (faqs.length === initialLength) {
-            return res.status(404).json({ message: `Nenhuma FAQ encontrada para a categoria '${categoryName}'.` });
-        }
-
-        await saveFaqs(faqs);
-
-        await logActivity('DELETE_CATEGORY_FAQS', 'N/A', { category: categoryName, count: deletedFaqsCount }, userIp, userAgent, userId);
-
-        res.status(200).json({ message: `Todas as FAQs da categoria '${categoryName}' foram excluídas com sucesso.` });
-    } catch (error) {
-        console.error(`Erro ao excluir FAQs da categoria '${categoryName}':`, error);
-        res.status(500).json({ message: 'Erro ao excluir FAQs por categoria.' });
+    } finally {
+        client.release();
     }
 });
 
@@ -440,88 +477,119 @@ app.delete('/api/faqs/:id', async (req, res) => {
     const userId = req.headers['x-user-id'] || 'anonymous';
 
     try {
-        let faqs = await loadFaqs();
-        const initialLength = faqs.length;
-        const deletedFaq = faqs.find(faq => faq.id === id);
-        faqs = faqs.filter(faq => faq.id !== id);
+        // ON DELETE CASCADE cuidará dos anexos
+        const deleteFaqQuery = 'DELETE FROM faqs WHERE id = $1 RETURNING question, category;';
+        const result = await pool.query(deleteFaqQuery, [id]);
 
-        if (faqs.length === initialLength) {
-            return res.status(404).json({ message: `FAQ com ID ${id} não encontrado.` });
+        if (result.rowCount === 0) {
+        return res.status(404).json({ message: `FAQ com ID ${id} não encontrado.` });
         }
 
-        await saveFaqs(faqs);
+        const deletedInfo = result.rows[0];
+        await logActivity('DELETE_FAQ', id, { question: deletedInfo.question, category: deletedInfo.category }, userIp, userAgent, userId);
 
-        if (deletedFaq) {
-            await logActivity('DELETE_FAQ', id, { question: deletedFaq.question, category: deletedFaq.category }, userIp, userAgent, userId);
-        }
-
-        res.status(204).send();
+        res.status(204).send(); // No Content
     } catch (error) {
-        console.error(`Erro ao excluir FAQ com ID ${id}:`, error);
+        console.error(`Erro ao excluir FAQ ${id} do DB:`, error);
         res.status(500).json({ message: 'Erro ao excluir FAQ.' });
     }
 });
 
-app.put('/api/faqs/category/rename', async (req, res) => {
+// --- Fim Rotas CRUD FAQs ---
+
+// --- Rotas de Gerenciamento de Categoria (SUBSTITUÍDAS) ---
+app.delete('/api/faqs/category/:categoryName', async (req, res) => {
+    const { categoryName } = req.params;
+    const userIp = req.ip;
+    const userAgent = req.headers['user-agent'];
+    const userId = req.headers['x-user-id'] || 'anonymous';
+
+    try {
+        // ON DELETE CASCADE cuidará dos anexos dos FAQs excluídos
+        const deleteQuery = 'DELETE FROM faqs WHERE lower(category) = lower($1);';
+        const result = await pool.query(deleteQuery, [categoryName]);
+
+        if (result.rowCount === 0) {
+            return res.status(404).json({ message: `Nenhuma FAQ encontrada para a categoria '${categoryName}'.` });
+        }
+
+        await logActivity('DELETE_CATEGORY_FAQS', 'N/A', { category: categoryName, count: result.rowCount }, userIp, userAgent, userId);
+
+        res.status(200).json({ message: `${result.rowCount} FAQs da categoria '${categoryName}' foram excluídos com sucesso.` });
+    } catch (error) {
+        console.error(`Erro ao excluir FAQs da categoria '${categoryName}' do DB:`, error);
+        res.status(500).json({ message: 'Erro ao excluir FAQs por categoria.' });
+    }
+});
+
+app.put('/api/faqs/category/rename', async (req, res) => { // Removido express.json() daqui, pois já está global
     const { oldCategoryName, newCategoryName } = req.body;
     const userIp = req.ip;
     const userAgent = req.headers['user-agent'];
     const userId = req.headers['x-user-id'] || 'anonymous';
 
     if (!oldCategoryName || !newCategoryName) {
-        return res.status(400).json({ message: 'Os campos oldCategoryName e newCategoryName são obrigatórios.' });
+         return res.status(400).json({ message: 'Os campos oldCategoryName e newCategoryName são obrigatórios.' });
     }
-    if (oldCategoryName.toLowerCase() === newCategoryName.toLowerCase()) {
-        return res.status(400).json({ message: 'O novo nome da categoria deve ser diferente do antigo.' });
+    if (oldCategoryName.trim().toLowerCase() === newCategoryName.trim().toLowerCase()) {
+         return res.status(400).json({ message: 'O novo nome da categoria deve ser diferente do antigo.' });
+    }
+    if (!newCategoryName.trim()) {
+         return res.status(400).json({ message: 'O novo nome da categoria não pode estar vazio.' });
     }
 
     try {
-        let faqs = await loadFaqs();
-        let updatedCount = 0;
+        const updateQuery = 'UPDATE faqs SET category = $1, updated_at = CURRENT_TIMESTAMP WHERE lower(category) = lower($2);';
+        const result = await pool.query(updateQuery, [newCategoryName.trim(), oldCategoryName.trim()]);
 
-        const updatedFaqs = faqs.map(faq => {
-            if (faq.category.toLowerCase() === oldCategoryName.toLowerCase()) {
-                updatedCount++;
-                return { ...faq, category: newCategoryName };
-            }
-            return faq;
-        });
-
-        if (updatedCount === 0) {
+        if (result.rowCount === 0) {
             return res.status(404).json({ message: `Nenhuma FAQ encontrada para a categoria '${oldCategoryName}'.` });
         }
 
-        await saveFaqs(updatedFaqs);
+        await logActivity('RENAME_CATEGORY', 'N/A', { oldCategory: oldCategoryName, newCategory: newCategoryName, count: result.rowCount }, userIp, userAgent, userId);
 
-        await logActivity('RENAME_CATEGORY', 'N/A', { oldCategory: oldCategoryName, newCategory: newCategoryName, count: updatedCount }, userIp, userAgent, userId);
-
-        res.status(200).json({ message: `${updatedCount} FAQs da categoria '${oldCategoryName}' foram renomeados para '${newCategoryName}'.` });
+        res.status(200).json({ message: `${result.rowCount} FAQs da categoria '${oldCategoryName}' foram renomeados para '${newCategoryName}'.` });
     } catch (error) {
-        console.error(`Erro ao renomear categoria de '${oldCategoryName}' para '${newCategoryName}':`, error);
+        console.error(`Erro ao renomear categoria '${oldCategoryName}' para '${newCategoryName}' no DB:`, error);
         res.status(500).json({ message: 'Erro ao renomear categoria.' });
     }
 });
+// --- Fim Rotas Categoria ---
 
+
+// --- Rota do Chat IA (sem alterações significativas na lógica interna) ---
 app.post('/api/ai-chat', uploadChatImage.single('image'), async (req, res) => {
+    // Implementação original... (verificar limites de taxa, etc.)
+    const userIp = req.ip; // Obter IP para limitação de taxa
+    const currentCount = requestCounts.get(userIp) || 0;
+
+    // if (!isServiceTime()) {
+    //     return res.status(503).json({ message: "O assistente de IA está disponível apenas durante o horário comercial (8h às 18h)." });
+    // }
+
+    // if (currentCount >= MAX_REQUESTS_PER_HOUR) {
+    //     return res.status(429).json({ message: "Limite de requisições por hora atingido. Tente novamente mais tarde." });
+    // }
+
     try {
         const { message, history, relevantFAQsContext } = req.body;
-        const imageFile = req.file;
-
+        const assetFile = req.file; // Renomeado de imageFile para assetFile
         let currentAssetFileUrl = null;
-        let extractedFileText = null; // NOVO: Para texto extraído de PDF/DOCX/TXT
+        let extractedFileText = null;
+        let savedAssetInfo = null; // Para guardar info do arquivo salvo
 
-        if (imageFile) {
-            const savedAssetInfo = await saveChatAssetToDisk(imageFile.buffer, imageFile.originalname, imageFile.mimetype);
+        if (assetFile) {
+            savedAssetInfo = await saveChatAssetToDisk(assetFile.buffer, assetFile.originalname, assetFile.mimetype);
             currentAssetFileUrl = savedAssetInfo.fileUrl;
-            console.log("Server - Chat asset salvo em:", currentAssetFileUrl);
+            console.log("Server - Chat asset salvo em:", currentAssetFileUrl, "Path:", savedAssetInfo.filePath);
 
-            // NOVO: Tentar extrair texto se for PDF/DOCX/TXT
-            if (imageFile.mimetype === 'application/pdf') {
-                extractedFileText = await extractTextFromPdf(savedAssetInfo.filePath || path.join(UPLOADS_DIR, savedAssetInfo.filename));
-            } else if (imageFile.mimetype === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
-                extractedFileText = await extractTextFromDocx(savedAssetInfo.filePath || path.join(UPLOADS_DIR, savedAssetInfo.filename));
-            } else if (imageFile.mimetype === 'text/plain') {
-                extractedFileText = await extractTextFromTxt(savedAssetInfo.filePath || path.join(UPLOADS_DIR, savedAssetInfo.filename));
+            // Tenta extrair texto
+            if (assetFile.mimetype === 'application/pdf' && savedAssetInfo.filePath) {
+                extractedFileText = await extractTextFromPdf(savedAssetInfo.filePath);
+            } else if (assetFile.mimetype === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' && savedAssetInfo.filePath) {
+                extractedFileText = await extractTextFromDocx(savedAssetInfo.filePath);
+            } else if (assetFile.mimetype === 'text/plain' && savedAssetInfo.filePath) {
+                extractedFileText = await extractTextFromTxt(savedAssetInfo.filePath);
             }
         }
 
@@ -532,93 +600,176 @@ app.post('/api/ai-chat', uploadChatImage.single('image'), async (req, res) => {
                     role: msg.sender === 'user' ? 'user' : 'model',
                     parts: [{ text: msg.text }]
                 }));
-            } else {
-                formattedHistory = [];
             }
-        } catch (e) {
-            console.error("Erro ao parsear histórico do chat:", e);
-            formattedHistory = [];
-        }
+        } catch (e) { console.error("Erro parse history:", e); }
 
         const contentParts = [];
-
         if (relevantFAQsContext) {
-            contentParts.push({ text: relevantFAQsContext });
+            contentParts.push({ text: "--- INÍCIO CONTEXTO FAQs RELEVANTES ---\n" + relevantFAQsContext + "\n--- FIM CONTEXTO FAQs RELEVANTES ---" });
         }
 
         let userMessageText = message || "";
         if (currentAssetFileUrl) {
-            // Adiciona a tag [ARQUIVO_ANEXADO]
             userMessageText += `\n\n[ARQUIVO_ANEXADO:${currentAssetFileUrl}]`;
-            // Se texto foi extraído, adicione-o como parte do conteúdo da mensagem para a IA
             if (extractedFileText) {
-                userMessageText += `\n\n***CONTEÚDO_ANEXO_TEXTO:***\n${extractedFileText}\n***FIM_CONTEÚDO_ANEXO_TEXTO***\n`;
+                // Limita o tamanho do texto extraído enviado para a IA
+                const MAX_TEXT_LENGTH = 15000; // Ajuste conforme necessário
+                const truncatedText = extractedFileText.length > MAX_TEXT_LENGTH
+                    ? extractedFileText.substring(0, MAX_TEXT_LENGTH) + "... (texto truncado)"
+                    : extractedFileText;
+                userMessageText += `\n\n***CONTEÚDO_ANEXO_TEXTO:***\n${truncatedText}\n***FIM_CONTEÚDO_ANEXO_TEXTO***\n`;
             }
         }
         contentParts.push({ text: userMessageText });
 
-        if (imageFile && imageFile.mimetype.startsWith('image/')) { // APENAS imagens são enviadas como inlineData
-            const imageBase64 = imageFile.buffer.toString('base64');
-            let normalizedMimeType = imageFile.mimetype;
-            if (normalizedMimeType === 'image/jpg') {
-                normalizedMimeType = 'image/jpeg';
-            }
+        // Enviar imagem como inlineData APENAS se for imagem
+        if (assetFile && assetFile.mimetype.startsWith('image/')) {
+            const imageBase64 = assetFile.buffer.toString('base64');
+            let normalizedMimeType = assetFile.mimetype === 'image/jpg' ? 'image/jpeg' : assetFile.mimetype;
             contentParts.push({
-                inlineData: {
-                    data: imageBase64,
-                    mimeType: normalizedMimeType,
-                },
+                inlineData: { data: imageBase64, mimeType: normalizedMimeType },
             });
         }
 
-        if (contentParts.length === 0) {
-            return res.status(400).json({ message: "Conteúdo da requisição de IA vazio." });
+        if (contentParts.length === 0 || (contentParts.length === 1 && !contentParts[0].text && !contentParts[0].inlineData)) {
+            return res.status(400).json({ message: "Mensagem vazia." });
         }
 
-        console.log("Server - Final Content Parts for Gemini:", JSON.stringify(contentParts).substring(0, 500) + (JSON.stringify(contentParts).length > 500 ? '...' : ''));
+        console.log("Server - Enviando para Gemini:", JSON.stringify(contentParts, null, 2).substring(0, 500) + '...');
 
         const model = ai.getGenerativeModel({
             model: GEMINI_MODEL_NAME,
             systemInstruction: { parts: [{ text: AI_SYSTEM_INSTRUCTION }] },
         });
-
-        const chatSession = model.startChat({
-            history: formattedHistory,
-            generationConfig: {
-                temperature: 0.9,
-                topK: 1,
-                topP: 1,
-                maxOutputTokens: 2048,
-            },
-        });
-
+        const chatSession = model.startChat({ history: formattedHistory, /* generationConfig */ });
         const result = await chatSession.sendMessage(contentParts);
-        console.log("DEBUG: Resposta BRUTA da API Gemini (result):", JSON.stringify(result)); // Adicione este log
         let aiResponseText = result.response.text();
-        console.log("DEBUG: Texto extraído da resposta Gemini (aiResponseText):", aiResponseText); // Adicione este log
 
+        // Extrair nível de detalhe
         let questionDetailLevel = null;
         const detailLevelRegex = /\[QUESTION_DETAIL_LEVEL:(Baixo|Médio|Alto)\]/i;
         const detailLevelMatch = aiResponseText.match(detailLevelRegex);
-
         if (detailLevelMatch && detailLevelMatch[1]) {
             questionDetailLevel = detailLevelMatch[1];
             aiResponseText = aiResponseText.replace(detailLevelRegex, '').trim();
         }
 
-        const userIp = req.ip;
+        // Log
         const userAgent = req.headers['user-agent'];
         const userId = req.headers['x-user-id'] || 'anonymous';
         await logAIChatInteraction(message, aiResponseText, questionDetailLevel, userIp, userAgent, userId);
 
+        // Incrementar contador de requisições
+        requestCounts.set(userIp, currentCount + 1);
 
         res.json({ response: aiResponseText, userAssetUrl: currentAssetFileUrl });
+
     } catch (error) {
         console.error("Erro ao chamar API Gemini via proxy:", error);
+        let statusCode = 500;
+        let errorMessage = `Erro ao processar sua solicitação de IA: ${error.message || 'Erro desconhecido.'}`;
+        // Adicionar tratamento específico para erros da API Gemini se necessário
+        // Ex: if (error.status === 429) { statusCode = 429; errorMessage = ... }
         if (error.code === 'LIMIT_FILE_SIZE') {
-            return res.status(413).json({ message: `Arquivo muito grande. Limite: ${multerLimits.fileSize / (1024 * 1024)}MB.` });
+             statusCode = 413; // Payload Too Large
+             errorMessage = `Arquivo muito grande. Limite: ${uploadChatImage.limits.fileSize / (1024 * 1024)}MB.`;
         }
-        res.status(500).json({ message: `Erro ao processar sua solicitação de IA: ${error.message || 'Erro desconhecido.'}` });
+        res.status(statusCode).json({ message: errorMessage });
+    }
+});
+// --- Fim Rota Chat IA ---
+
+
+// --- Rota de Limpeza de Arquivos Órfãos (PRECISA SER ADAPTADA) ---
+app.delete('/api/cleanup-orphaned-files', async (req, res) => {
+    const userIp = req.ip;
+    const userAgent = req.headers['user-agent'];
+    const userId = req.headers['x-user-id'] || 'anonymous';
+    console.log(`[${new Date().toISOString()}] Iniciando limpeza de arquivos órfãos por ${userId} (${userIp})`);
+
+    const client = await pool.connect(); // Usar conexão com DB
+    try {
+        const usedUrlsDb = new Set();
+
+        // 1. Coletar URLs da tabela attachments
+        const attachmentsResult = await client.query('SELECT url FROM attachments');
+        for (const row of attachmentsResult.rows) {
+            if (row.url) usedUrlsDb.add(row.url);
+        }
+
+        // 2. Coletar URLs da coluna 'answer' na tabela 'faqs'
+        const faqsResult = await client.query('SELECT answer FROM faqs');
+        for (const row of faqsResult.rows) {
+            const imagesInAnswer = extractImageUrlsFromHtml(row.answer);
+            for (const url of imagesInAnswer) {
+                usedUrlsDb.add(url);
+            }
+        }
+        console.log("URLs usadas encontradas no Banco de Dados:", Array.from(usedUrlsDb));
+
+        // 3. Coletar arquivos físicos
+        let uploadedFiles;
+        try {
+            uploadedFiles = await fs.readdir(UPLOADS_DIR);
+        } catch (readDirError) {
+             if (readDirError.code === 'ENOENT') {
+                 console.log("Diretório de uploads não encontrado, nada para limpar.");
+                 return res.status(200).json({ message: "Diretório de uploads não encontrado, nada para limpar.", removedFiles: [], failedFiles: [] });
+             }
+            console.error('Erro ao ler diretório de uploads:', readDirError);
+            return res.status(500).json({ message: 'Erro ao acessar diretório de uploads.' });
+        }
+
+        let deletedCount = 0;
+        let errorCount = 0;
+        const deletedFilesList = [];
+        const failedToDeleteList = [];
+
+        // 4. Comparar e excluir
+        for (const file of uploadedFiles) {
+            const fileUrl = `${UPLOADS_SERVE_PATH}/${file}`;
+            if (!usedUrlsDb.has(fileUrl)) {
+                const filePath = path.join(UPLOADS_DIR, file);
+                try {
+                    await fs.unlink(filePath);
+                    console.log(`Arquivo órfão removido: ${file}`);
+                    deletedCount++;
+                    deletedFilesList.push(file);
+                } catch (unlinkError) {
+                    console.error(`Erro ao remover arquivo órfão ${file}:`, unlinkError);
+                    errorCount++;
+                    failedToDeleteList.push(`${file} (${unlinkError.message})`);
+                }
+            }
+        }
+
+        const message = `Limpeza concluída. ${deletedCount} arquivos órfãos removidos. ${errorCount} falhas.`;
+        await logActivity('CLEANUP_ORPHANED_FILES', 'N/A', { removedCount: deletedCount, failedCount: errorCount, removed: deletedFilesList, failed: failedToDeleteList }, userIp, userAgent, userId);
+        console.log(message);
+        res.status(200).json({ message, removedFiles: deletedFilesList, failedFiles: failedToDeleteList });
+
+    } catch (error) {
+        console.error('Erro no processo de limpeza de arquivos órfãos:', error);
+        res.status(500).json({ message: `Erro interno ao limpar arquivos: ${error.message || 'Erro desconhecido.'}` });
+    } finally {
+        if(client) client.release(); // Liberar conexão com DB
+    }
+});
+// --- Fim Rota Limpeza ---
+
+
+// --- Rotas de Log (sem alterações) ---
+app.get('/api/logs/faq-activity', async (req, res) => {
+    try {
+        await fs.access(LOG_FILE);
+        const data = await fs.readFile(LOG_FILE, 'utf8');
+        res.status(200).type('text/plain').send(data);
+    } catch (error) {
+        if (error.code === 'ENOENT') {
+            return res.status(404).json({ message: 'Arquivo de log de atividades não encontrado.' });
+        }
+        console.error('Erro ao ler o arquivo de log:', error);
+        res.status(500).json({ message: 'Erro ao carregar o log de atividades.' });
     }
 });
 
@@ -635,98 +786,23 @@ app.get('/api/logs/ai-chat-activity', async (req, res) => {
         res.status(500).json({ message: 'Erro ao carregar o log de atividades do chat da IA.' });
     }
 });
+// --- Fim Rotas Log ---
 
-app.delete('/api/cleanup-orphaned-files', async (req, res) => {
-    const userIp = req.ip;
-    const userAgent = req.headers['user-agent'];
-    const userId = req.headers['x-user-id'] || 'anonymous';
-    console.log(`[${new Date().toISOString()}] Iniciando limpeza de arquivos órfãos por ${userId} (${userIp})`);
-
-    try {
-        const faqs = await loadFaqs();
-        const usedUrls = new Set();
-
-        // 1. Coletar todas as URLs usadas de FAQs
-        for (const faq of faqs) {
-            // URLs de imagens no corpo da resposta (HTML)
-            const imagesInAnswer = extractImageUrlsFromHtml(faq.answer);
-            for (const url of imagesInAnswer) {
-                usedUrls.add(url);
-            }
-            // URLs de anexos
-            if (faq.attachments && Array.isArray(faq.attachments)) {
-                for (const att of faq.attachments) {
-                    usedUrls.add(att.url);
-                }
-            }
-        }
-        console.log("URLs usadas encontradas nos FAQs:", Array.from(usedUrls));
-
-        // 2. Coletar todos os arquivos físicos na pasta de uploads
-        let uploadedFiles;
-        try {
-            uploadedFiles = await fs.readdir(UPLOADS_DIR);
-        } catch (readDirError) {
-            console.error('Erro ao ler diretório de uploads:', readDirError);
-            return res.status(500).json({ message: 'Erro ao acessar diretório de uploads.' });
-        }
-
-        let deletedCount = 0;
-        let errorCount = 0;
-        const deletedFilesList = [];
-        const failedToDeleteList = [];
-
-        // 3. Comparar e excluir arquivos órfãos
-        for (const file of uploadedFiles) {
-            const fileUrl = `${UPLOADS_SERVE_PATH}/${file}`;
-            if (!usedUrls.has(fileUrl)) {
-                // Se a URL do arquivo não está na lista de URLs usadas, é órfão
-                const filePath = path.join(UPLOADS_DIR, file);
-                try {
-                    await fs.unlink(filePath);
-                    console.log(`Arquivo órfão removido: ${file}`);
-                    deletedCount++;
-                    deletedFilesList.push(file);
-                } catch (unlinkError) {
-                    console.error(`Erro ao remover arquivo órfão ${file}:`, unlinkError);
-                    errorCount++;
-                    failedToDeleteList.push(`${file} (${unlinkError.message})`);
-                }
-            }
-        }
-
-        const message = `Limpeza concluída. ${deletedCount} arquivos órfãos removidos. ${errorCount} falhas.`;
-        await logActivity('CLEANUP_ORPHANED_FILES', 'N/A', { removed: deletedFilesList, failed: failedToDeleteList }, userIp, userAgent, userId);
-        console.log(message);
-        res.status(200).json({ message, removedFiles: deletedFilesList, failedFiles: failedToDeleteList });
-
-    } catch (error) {
-        console.error('Erro no processo de limpeza de arquivos órfãos:', error);
-        res.status(500).json({ message: `Erro interno ao limpar arquivos: ${error.message || 'Erro desconhecido.'}` });
-    }
-});
-
-
-app.get('/api/logs/faq-activity', async (req, res) => {
-    try {
-        await fs.access(LOG_FILE);
-        const data = await fs.readFile(LOG_FILE, 'utf8');
-        res.status(200).type('text/plain').send(data);
-    }
-    catch (error) {
-        if (error.code === 'ENOENT') {
-            return res.status(404).json({ message: 'Arquivo de log de atividades não encontrado.' });
-        }
-        console.error('Erro ao ler o arquivo de log:', error);
-        res.status(500).json({ message: 'Erro ao carregar o log de atividades.' });
-    }
-});
-
+// --- Rota Catch-all para Frontend (sem alterações) ---
 app.get('*', (req, res) => {
+    // Evitar servir index.html para caminhos de API inexistentes
+    if (req.path.startsWith('/api/')) {
+        return res.status(404).send('Not Found');
+    }
     res.sendFile(path.join(frontendBuildPath, 'index.html'));
 });
+// --- Fim Catch-all ---
 
-app.listen(PORT, () => {
+// --- Inicialização do Servidor (sem alterações) ---
+app.listen(PORT, '0.0.0.0', () => { // Adicionado '0.0.0.0' para garantir que escute externamente no container
     console.log(`Servidor FAQ rodando na porta ${PORT}`);
-    console.log(`Diretório de uploads: ${UPLOADS_DIR}`);
+    console.log(`Diretório de uploads servido de: ${UPLOADS_DIR}`);
+    console.log(`Build do frontend servido de: ${frontendBuildPath}`);
+    console.log(`Modo Produção: ${IS_PRODUCTION}`);
 });
+// --- Fim Inicialização ---
