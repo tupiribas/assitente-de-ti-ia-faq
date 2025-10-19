@@ -30,16 +30,16 @@ if (!connectionString) {
 }
 
 const pool = new Pool({
-  connectionString: connectionString,
-  // ssl: { rejectUnauthorized: false } // Descomente se necessário para Fly.io localmente
+    connectionString: connectionString,
+    // ssl: { rejectUnauthorized: false } // Descomente se necessário para Fly.io localmente
 });
 
 pool.query('SELECT NOW()', (err, res) => {
-  if (err) {
-    console.error('Erro ao conectar ao PostgreSQL:', err);
-  } else {
-    console.log('Conectado ao PostgreSQL:', res ? res.rows[0].now : 'sem resposta');
-  }
+    if (err) {
+        console.error('Erro ao conectar ao PostgreSQL:', err);
+    } else {
+        console.log('Conectado ao PostgreSQL:', res ? res.rows[0].now : 'sem resposta');
+    }
 });
 // --- Fim Configuração Banco de Dados ---
 
@@ -111,34 +111,34 @@ app.use(express.json()); // Middleware para parsear JSON bodies
 // --- Configuração de Sessão ---
 const SESSION_SECRET = process.env.SESSION_SECRET || 'seu-segredo-super-secreto-padrao';
 if (SESSION_SECRET === 'seu-segredo-super-secreto-padrao' && IS_PRODUCTION) {
-  console.warn('\n\n!!! AVISO: Usando segredo de sessão padrão em produção !!!\n Defina um segredo forte via: fly secrets set SESSION_SECRET=$(openssl rand -hex 32)\n\n');
+    console.warn('\n\n!!! AVISO: Usando segredo de sessão padrão em produção !!!\n Defina um segredo forte via: fly secrets set SESSION_SECRET=$(openssl rand -hex 32)\n\n');
 }
 
 app.use(session({
-  store: new PgSession({
-    pool: pool,
-    tableName: 'user_sessions',
-    createTableIfMissing: true // Cria a tabela se não existir
-  }),
-  secret: SESSION_SECRET,
-  resave: false,
-  saveUninitialized: false,
-  cookie: {
-    secure: IS_PRODUCTION,
-    httpOnly: true,
-    maxAge: 1000 * 60 * 60 * 24 * 7, // 7 dias
-    sameSite: 'lax' // Ou 'strict' se preferir mais segurança, mas pode quebrar alguns fluxos
-  }
+    store: new PgSession({
+        pool: pool,
+        tableName: 'user_sessions',
+        createTableIfMissing: true // Cria a tabela se não existir
+    }),
+    secret: SESSION_SECRET,
+    resave: false,
+    saveUninitialized: false,
+    cookie: {
+        secure: IS_PRODUCTION,
+        httpOnly: true,
+        maxAge: 1000 * 60 * 60 * 24 * 7, // 7 dias
+        sameSite: 'lax' // Ou 'strict' se preferir mais segurança, mas pode quebrar alguns fluxos
+    }
 }));
 
 // Middleware para adicionar req.user
 app.use((req, res, next) => {
-  if (req.session && req.session.user) {
-    req.user = req.session.user;
-  } else {
-    req.user = null;
-  }
-  next();
+    if (req.session && req.session.user) {
+        req.user = req.session.user;
+    } else {
+        req.user = null;
+    }
+    next();
 });
 // --- Fim Configuração de Sessão ---
 
@@ -170,27 +170,27 @@ const logAIChatInteraction = async (userQuestion, aiResponse, detailLevel, ip, u
 
 // --- Middlewares de Autorização ---
 const isAuthenticated = (req, res, next) => {
-  if (req.user) { // Verifica req.user que foi setado pelo middleware anterior
-    next();
-  } else {
-    res.status(401).json({ message: 'Acesso não autorizado. Faça login.' });
-  }
+    if (req.user) { // Verifica req.user que foi setado pelo middleware anterior
+        next();
+    } else {
+        res.status(401).json({ message: 'Acesso não autorizado. Faça login.' });
+    }
 };
 
 const isAdmin = (req, res, next) => {
-  if (req.user && req.user.role === 'admin') {
-    next();
-  } else {
-    res.status(403).json({ message: 'Acesso proibido. Requer privilégios de administrador.' });
-  }
+    if (req.user && req.user.role === 'admin') {
+        next();
+    } else {
+        res.status(403).json({ message: 'Acesso proibido. Requer privilégios de administrador.' });
+    }
 };
 
 const isEditorOrAdmin = (req, res, next) => {
-  if (req.user && (req.user.role === 'admin' || req.user.role === 'editor')) {
-    next();
-  } else {
-    res.status(403).json({ message: 'Acesso proibido. Requer privilégios de editor ou administrador.' });
-  }
+    if (req.user && (req.user.role === 'admin' || req.user.role === 'editor')) {
+        next();
+    } else {
+        res.status(403).json({ message: 'Acesso proibido. Requer privilégios de editor ou administrador.' });
+    }
 };
 // --- Fim Middlewares de Autorização ---
 
@@ -198,50 +198,50 @@ const isEditorOrAdmin = (req, res, next) => {
 const SALT_ROUNDS = 10;
 
 app.post('/api/auth/login', async (req, res) => { // Removido express.json() daqui, já está global
-  const { username, password } = req.body;
-  if (!username || !password) {
-    return res.status(400).json({ message: 'Usuário e senha são obrigatórios.' });
-  }
-  try {
-    const result = await pool.query('SELECT id, username, password_hash, role FROM users WHERE username = $1', [username]);
-    const user = result.rows[0];
-    if (!user) {
-      return res.status(401).json({ message: 'Usuário ou senha inválidos.' }); // Resposta genérica
+    const { username, password } = req.body;
+    if (!username || !password) {
+        return res.status(400).json({ message: 'Usuário e senha são obrigatórios.' });
     }
-    const match = await bcrypt.compare(password, user.password_hash);
-    if (match) {
-      req.session.user = { id: user.id, username: user.username, role: user.role };
-      console.log(`Login successful for user: ${user.username}`);
-      res.json({ id: user.id, username: user.username, role: user.role });
-    } else {
-      console.log(`Login failed for user: ${username} (invalid password)`);
-      res.status(401).json({ message: 'Usuário ou senha inválidos.' }); // Resposta genérica
+    try {
+        const result = await pool.query('SELECT id, username, password_hash, role FROM users WHERE username = $1', [username]);
+        const user = result.rows[0];
+        if (!user) {
+            return res.status(401).json({ message: 'Usuário ou senha inválidos.' }); // Resposta genérica
+        }
+        const match = await bcrypt.compare(password, user.password_hash);
+        if (match) {
+            req.session.user = { id: user.id, username: user.username, role: user.role };
+            console.log(`Login successful for user: ${user.username}`);
+            res.json({ id: user.id, username: user.username, role: user.role });
+        } else {
+            console.log(`Login failed for user: ${username} (invalid password)`);
+            res.status(401).json({ message: 'Usuário ou senha inválidos.' }); // Resposta genérica
+        }
+    } catch (error) {
+        console.error('Erro no login:', error);
+        res.status(500).json({ message: 'Erro interno no servidor durante o login.' });
     }
-  } catch (error) {
-    console.error('Erro no login:', error);
-    res.status(500).json({ message: 'Erro interno no servidor durante o login.' });
-  }
 });
 
 app.post('/api/auth/logout', (req, res) => {
-  const username = req.session.user ? req.session.user.username : 'unknown';
-  req.session.destroy(err => {
-    if (err) {
-      console.error("Erro ao destruir sessão:", err);
-      return res.status(500).json({ message: 'Erro ao fazer logout.' });
-    }
-    res.clearCookie('connect.sid'); // Nome padrão do cookie do express-session
-    console.log(`Logout successful for user: ${username}`);
-    res.status(200).json({ message: 'Logout bem-sucedido.' });
-  });
+    const username = req.session.user ? req.session.user.username : 'unknown';
+    req.session.destroy(err => {
+        if (err) {
+            console.error("Erro ao destruir sessão:", err);
+            return res.status(500).json({ message: 'Erro ao fazer logout.' });
+        }
+        res.clearCookie('connect.sid'); // Nome padrão do cookie do express-session
+        console.log(`Logout successful for user: ${username}`);
+        res.status(200).json({ message: 'Logout bem-sucedido.' });
+    });
 });
 
 app.get('/api/auth/status', (req, res) => {
-  if (req.user) { // Usa req.user populado pelo middleware
-    res.json({ loggedIn: true, user: req.user });
-  } else {
-    res.json({ loggedIn: false, user: null });
-  }
+    if (req.user) { // Usa req.user populado pelo middleware
+        res.json({ loggedIn: true, user: req.user });
+    } else {
+        res.json({ loggedIn: false, user: null });
+    }
 });
 // --- Fim Rotas de Autenticação ---
 
@@ -483,9 +483,9 @@ app.post('/api/faqs', isEditorOrAdmin, multer().none(), async (req, res) => {
             `;
             for (const att of parsedAttachments) {
                 if (att.url && att.name && att.extension && att.type && ['image', 'document'].includes(att.type)) {
-                   await client.query(insertAttachmentQuery, [newDbFaq.id, att.url, att.name, att.extension, att.type]);
+                    await client.query(insertAttachmentQuery, [newDbFaq.id, att.url, att.name, att.extension, att.type]);
                 } else {
-                   console.warn(`Anexo inválido ignorado durante criação do FAQ ${newDbFaq.id}:`, att);
+                    console.warn(`Anexo inválido ignorado durante criação do FAQ ${newDbFaq.id}:`, att);
                 }
             }
         }
@@ -532,8 +532,8 @@ app.put('/api/faqs/:id', isEditorOrAdmin, multer().none(), async (req, res) => {
             parsedAttachments = JSON.parse(_attachmentsData);
             if (!Array.isArray(parsedAttachments)) parsedAttachments = [];
         } catch (e) {
-             console.error('Erro ao parsear _attachmentsData (PUT):', e);
-             return res.status(400).json({ message: 'Formato inválido para _attachmentsData.' });
+            console.error('Erro ao parsear _attachmentsData (PUT):', e);
+            return res.status(400).json({ message: 'Formato inválido para _attachmentsData.' });
         }
     }
     const userIp = req.ip;
@@ -568,11 +568,11 @@ app.put('/api/faqs/:id', isEditorOrAdmin, multer().none(), async (req, res) => {
                 VALUES ($1, $2, $3, $4, $5);
             `;
             for (const att of parsedAttachments) {
-                 if (att.url && att.name && att.extension && att.type && ['image', 'document'].includes(att.type)) {
+                if (att.url && att.name && att.extension && att.type && ['image', 'document'].includes(att.type)) {
                     await client.query(insertAttachmentQuery, [id, att.url, att.name, att.extension, att.type]);
-                 } else {
+                } else {
                     console.warn(`Anexo inválido ignorado durante atualização do FAQ ${id}:`, att);
-                 }
+                }
             }
         }
         await client.query('COMMIT');
@@ -682,13 +682,13 @@ app.put('/api/faqs/category/rename', isEditorOrAdmin, async (req, res) => {
 
     // ... (validações) ...
     if (!oldCategoryName || !newCategoryName) {
-         return res.status(400).json({ message: 'Os campos oldCategoryName e newCategoryName são obrigatórios.' });
+        return res.status(400).json({ message: 'Os campos oldCategoryName e newCategoryName são obrigatórios.' });
     }
     if (oldCategoryName.trim().toLowerCase() === newCategoryName.trim().toLowerCase()) {
-         return res.status(400).json({ message: 'O novo nome da categoria deve ser diferente do antigo.' });
+        return res.status(400).json({ message: 'O novo nome da categoria deve ser diferente do antigo.' });
     }
     if (!newCategoryName.trim()) {
-         return res.status(400).json({ message: 'O novo nome da categoria não pode estar vazio.' });
+        return res.status(400).json({ message: 'O novo nome da categoria não pode estar vazio.' });
     }
 
     try {
@@ -718,8 +718,143 @@ app.put('/api/faqs/category/rename', isEditorOrAdmin, async (req, res) => {
 
 // --- Rota do Chat IA (sem alterações na proteção ou lógica principal) ---
 // Note: Adicionar log de auditoria aqui pode ser excessivo, mas pode-se logar quem iniciou a conversa se necessário.
+// --- Rota do Chat IA (com limitação de histórico) ---
 app.post('/api/ai-chat', uploadChatImage.single('image'), async (req, res) => {
-    // ... (lógica existente, incluindo logAIChatInteraction) ...
+    const userIp = req.ip;
+    const currentCount = requestCounts.get(userIp) || 0;
+
+    // Descomente se quiser reativar a limitação de taxa
+    // if (currentCount >= MAX_REQUESTS_PER_HOUR) {
+    //     return res.status(429).json({ message: "Limite de requisições por hora atingido. Tente novamente mais tarde." });
+    // }
+
+    try {
+        const { message, history, relevantFAQsContext } = req.body;
+        const assetFile = req.file; // Renomeado para 'assetFile' para clareza
+        let currentAssetFileUrl = null;
+        let extractedFileText = null;
+        let savedAssetInfo = null;
+
+        if (assetFile) {
+            savedAssetInfo = await saveChatAssetToDisk(assetFile.buffer, assetFile.originalname, assetFile.mimetype);
+            currentAssetFileUrl = savedAssetInfo.fileUrl;
+            console.log("Server - Chat asset salvo em:", currentAssetFileUrl, "Path:", savedAssetInfo.filePath);
+
+            // Tenta extrair texto de documentos
+            if (assetFile.mimetype === 'application/pdf' && savedAssetInfo.filePath) {
+                extractedFileText = await extractTextFromPdf(savedAssetInfo.filePath);
+            } else if (assetFile.mimetype === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' && savedAssetInfo.filePath) {
+                extractedFileText = await extractTextFromDocx(savedAssetInfo.filePath);
+            } else if (assetFile.mimetype === 'text/plain' && savedAssetInfo.filePath) {
+                extractedFileText = await extractTextFromTxt(savedAssetInfo.filePath);
+            }
+        }
+
+        let formattedHistory = [];
+        try {
+            if (typeof history === 'string' && history.trim() !== '') {
+                formattedHistory = JSON.parse(history).map((msg) => ({
+                    role: msg.sender === 'user' ? 'user' : 'model',
+                    parts: [{ text: msg.text }]
+                }));
+            }
+        } catch (e) {
+            console.error("Erro ao parsear histórico do chat:", e);
+            // Continua com histórico vazio se houver erro
+        }
+
+        // --- OTIMIZAÇÃO: Limita o histórico enviado para a IA ---
+        const MAX_HISTORY_TURNS = 15; // Mantém as últimas 10 trocas (10 perguntas + 10 respostas = 20 mensagens)
+        const truncatedHistory = formattedHistory.slice(-MAX_HISTORY_TURNS * 2);
+        console.log(`Enviando ${truncatedHistory.length} de ${formattedHistory.length} mensagens de histórico para a IA.`);
+        // --- FIM DA OTIMIZAÇÃO ---
+
+        const contentParts = [];
+        if (relevantFAQsContext) {
+            contentParts.push({ text: "--- INÍCIO CONTEXTO FAQs RELEVANTES ---\n" + relevantFAQsContext + "\n--- FIM CONTEXTO FAQs RELEVANTES ---" });
+        }
+
+        let userMessageText = message || "";
+        if (currentAssetFileUrl) {
+            userMessageText += `\n\n[ARQUIVO_ANEXADO:${currentAssetFileUrl}]`;
+            if (extractedFileText) {
+                const MAX_TEXT_LENGTH = 15000; // Limita o tamanho do texto extraído para não sobrecarregar o prompt
+                const truncatedText = extractedFileText.length > MAX_TEXT_LENGTH
+                    ? extractedFileText.substring(0, MAX_TEXT_LENGTH) + "... (texto truncado)"
+                    : extractedFileText;
+                userMessageText += `\n\n***CONTEÚDO_ANEXO_TEXTO:***\n${truncatedText}\n***FIM_CONTEÚDO_ANEXO_TEXTO***\n`;
+            }
+        }
+        contentParts.push({ text: userMessageText });
+
+        // Envia imagem como inlineData APENAS se for um tipo de imagem
+        if (assetFile && assetFile.mimetype.startsWith('image/')) {
+            const imageBase64 = assetFile.buffer.toString('base64');
+            let normalizedMimeType = assetFile.mimetype === 'image/jpg' ? 'image/jpeg' : assetFile.mimetype;
+            contentParts.push({
+                inlineData: { data: imageBase64, mimeType: normalizedMimeType },
+            });
+        }
+
+        if (contentParts.length === 0 || (contentParts.length === 1 && !contentParts[0].text && !contentParts[0].inlineData)) {
+            return res.status(400).json({ message: "Mensagem vazia." });
+        }
+
+        console.log("Server - Enviando para Gemini (início do prompt):", JSON.stringify(contentParts, null, 2).substring(0, 500) + '...');
+
+        const model = ai.getGenerativeModel({
+            model: GEMINI_MODEL_NAME,
+            systemInstruction: { parts: [{ text: AI_SYSTEM_INSTRUCTION }] },
+        });
+
+        // --- MODIFICADO: Usa truncatedHistory ---
+        const chatSession = model.startChat({
+            history: formattedHistory, // Envia o histórico limitado
+            generationConfig: {
+                temperature: 0.9,
+                topK: 1,
+                topP: 1,
+                maxOutputTokens: 4096,
+            },
+        });
+        // --- FIM MODIFICADO ---
+
+        const result = await chatSession.sendMessage(contentParts);
+        let aiResponseText = result.response.text();
+
+        // Extrai o nível de detalhe da resposta da IA
+        let questionDetailLevel = null;
+        const detailLevelRegex = /\[QUESTION_DETAIL_LEVEL:(Baixo|Médio|Alto)\]/i;
+        const detailLevelMatch = aiResponseText.match(detailLevelRegex);
+        if (detailLevelMatch && detailLevelMatch[1]) {
+            questionDetailLevel = detailLevelMatch[1];
+            aiResponseText = aiResponseText.replace(detailLevelRegex, '').trim(); // Remove a tag da resposta final
+        }
+
+        // Log da interação
+        const userAgent = req.headers['user-agent'];
+        // Usa o ID do utilizador logado se existir, senão usa o ID anónimo do cabeçalho
+        const userId = req.user ? req.user.id : (req.headers['x-user-id'] || 'anonymous-chat');
+        await logAIChatInteraction(message, aiResponseText, questionDetailLevel, userIp, userAgent, userId);
+
+        // Incrementa contador de requisições
+        requestCounts.set(userIp, currentCount + 1);
+
+        res.json({ response: aiResponseText, userAssetUrl: currentAssetFileUrl });
+
+    } catch (error) {
+        console.error("Erro ao chamar API Gemini via proxy:", error);
+        let statusCode = 500;
+        let errorMessage = `Erro ao processar sua solicitação de IA: ${error.message || 'Erro desconhecido.'}`;
+
+        if (error.code === 'LIMIT_FILE_SIZE') {
+            statusCode = 413; // Payload Too Large
+            errorMessage = `Ficheiro muito grande. Limite: ${uploadChatImage.limits.fileSize / (1024 * 1024)}MB.`;
+        }
+        // Adicionar tratamento para outros erros específicos da API Gemini se necessário
+
+        res.status(statusCode).json({ message: errorMessage });
+    }
 });
 // --- Fim Rota Chat IA ---
 
@@ -776,91 +911,91 @@ app.delete('/api/cleanup-orphaned-files', isAdmin, async (req, res) => {
         console.error('Erro no processo de limpeza de arquivos órfãos:', error);
         res.status(500).json({ message: `Erro interno ao limpar arquivos: ${error.message || 'Erro desconhecido.'}` });
     } finally {
-        if(client) client.release();
+        if (client) client.release();
     }
 });
 // --- Fim Rota Limpeza ---
 
 // --- NOVAS ROTAS DE ADMINISTRAÇÃO DE USUÁRIOS (PROTEGIDAS e com LOG) ---
 app.get('/api/admin/users', isAuthenticated, isAdmin, async (req, res) => {
-  try {
-    const result = await pool.query('SELECT id, username, role, created_at FROM users ORDER BY username');
-    res.json(result.rows);
-  } catch (error) {
-    console.error("Erro ao listar usuários:", error);
-    res.status(500).json({ message: 'Erro ao buscar usuários.' });
-  }
+    try {
+        const result = await pool.query('SELECT id, username, role, created_at FROM users ORDER BY username');
+        res.json(result.rows);
+    } catch (error) {
+        console.error("Erro ao listar usuários:", error);
+        res.status(500).json({ message: 'Erro ao buscar usuários.' });
+    }
 });
 
 app.post('/api/admin/users', isAuthenticated, isAdmin, async (req, res) => { // Removido express.json()
-  const { username, password, role } = req.body;
-  const userIp = req.ip;
-  const userAgent = req.headers['user-agent'];
-  const adminUserId = req.user.id;
-  const adminUsername = req.user.username;
+    const { username, password, role } = req.body;
+    const userIp = req.ip;
+    const userAgent = req.headers['user-agent'];
+    const adminUserId = req.user.id;
+    const adminUsername = req.user.username;
 
-  if (!username || !password || !role || !['admin', 'editor'].includes(role)) { /* ... validação ... */ }
-  if (password.length < 8) { /* ... validação senha ... */ }
+    if (!username || !password || !role || !['admin', 'editor'].includes(role)) { /* ... validação ... */ }
+    if (password.length < 8) { /* ... validação senha ... */ }
 
-  try {
-    const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
-    const result = await pool.query(
-      'INSERT INTO users (username, password_hash, role) VALUES ($1, $2, $3) RETURNING id, username, role, created_at',
-      [username, passwordHash, role]
-    );
-    const newUser = result.rows[0];
+    try {
+        const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
+        const result = await pool.query(
+            'INSERT INTO users (username, password_hash, role) VALUES ($1, $2, $3) RETURNING id, username, role, created_at',
+            [username, passwordHash, role]
+        );
+        const newUser = result.rows[0];
 
-    await logActivity(
-        'CREATE_USER',
-        newUser.id,
-        { username: newUser.username, role: newUser.role, createdBy: adminUsername },
-        userIp,
-        userAgent,
-        adminUserId
-    );
+        await logActivity(
+            'CREATE_USER',
+            newUser.id,
+            { username: newUser.username, role: newUser.role, createdBy: adminUsername },
+            userIp,
+            userAgent,
+            adminUserId
+        );
 
-    res.status(201).json(newUser);
-  } catch (error) { /* ... tratamento erro unique constraint e outros ... */
-      console.error("Erro ao criar usuário:", error);
-      if (error.code === '23505') {
-         res.status(409).json({ message: `Nome de usuário '${username}' já existe.` });
-      } else {
-         res.status(500).json({ message: 'Erro ao criar usuário.' });
-      }
-  }
+        res.status(201).json(newUser);
+    } catch (error) { /* ... tratamento erro unique constraint e outros ... */
+        console.error("Erro ao criar usuário:", error);
+        if (error.code === '23505') {
+            res.status(409).json({ message: `Nome de usuário '${username}' já existe.` });
+        } else {
+            res.status(500).json({ message: 'Erro ao criar usuário.' });
+        }
+    }
 });
 
 app.delete('/api/admin/users/:userId', isAuthenticated, isAdmin, async (req, res) => {
-  const { userId } = req.params;
-  const userIp = req.ip;
-  const userAgent = req.headers['user-agent'];
-  const adminUserId = req.user.id;
-  const adminUsername = req.user.username;
+    const { userId } = req.params;
+    const userIp = req.ip;
+    const userAgent = req.headers['user-agent'];
+    const adminUserId = req.user.id;
+    const adminUsername = req.user.username;
 
-  if (userId === adminUserId) { /* ... não excluir a si mesmo ... */ }
+    if (userId === adminUserId) { /* ... não excluir a si mesmo ... */ }
 
-  try {
-    const userToDeleteResult = await pool.query('SELECT username, role FROM users WHERE id = $1', [userId]);
-    const userToDelete = userToDeleteResult.rows[0];
-    if (!userToDelete) { /* ... usuário não encontrado ... */ }
+    try {
+        const userToDeleteResult = await pool.query('SELECT username, role FROM users WHERE id = $1', [userId]);
+        const userToDelete = userToDeleteResult.rows[0];
+        if (!userToDelete) { /* ... usuário não encontrado ... */ }
 
-    const result = await pool.query('DELETE FROM users WHERE id = $1 RETURNING id', [userId]);
-    // A verificação de rowCount já estava implícita pelo SELECT anterior
+        const result = await pool.query('DELETE FROM users WHERE id = $1 RETURNING id', [userId]);
+        // A verificação de rowCount já estava implícita pelo SELECT anterior
 
-    await logActivity(
-        'DELETE_USER',
-        userId,
-        { username: userToDelete.username, role: userToDelete.role, deletedBy: adminUsername },
-        userIp,
-        userAgent,
-        adminUserId
-    );
+        await logActivity(
+            'DELETE_USER',
+            userId,
+            { username: userToDelete.username, role: userToDelete.role, deletedBy: adminUsername },
+            userIp,
+            userAgent,
+            adminUserId
+        );
 
-    res.status(204).send();
-  } catch (error) { /* ... erro ... */
-      console.error("Erro ao excluir usuário:", error);
-      res.status(500).json({ message: 'Erro ao excluir usuário.' });
-  }
+        res.status(204).send();
+    } catch (error) { /* ... erro ... */
+        console.error("Erro ao excluir usuário:", error);
+        res.status(500).json({ message: 'Erro ao excluir usuário.' });
+    }
 });
 // --- Fim Rotas Admin Usuários ---
 
