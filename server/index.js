@@ -43,6 +43,34 @@ pool.query('SELECT NOW()', (err, res) => {
 });
 // --- Fim Configuração Banco de Dados ---
 
+// Perto do início, depois das configurações de Pool
+let currentSystemPrompt = ''; // Cache para o prompt
+
+// Função para carregar/recarregar o prompt da DB
+async function loadSystemPrompt() {
+    try {
+        const result = await pool.query("SELECT setting_value FROM system_settings WHERE setting_key = 'ai_system_prompt'");
+        if (result.rows.length > 0) {
+            currentSystemPrompt = result.rows[0].setting_value;
+            console.log("Prompt do sistema carregado/atualizado da base de dados.");
+        } else {
+            // Se não encontrar na DB, usa o fallback do ficheiro (ou lança erro)
+            console.warn("AVISO: Prompt do sistema não encontrado na base de dados. A usar fallback do ficheiro de constantes.");
+            currentSystemPrompt = AI_SYSTEM_INSTRUCTION; // Fallback
+        }
+    } catch (error) {
+        console.error("Erro ao carregar prompt do sistema da base de dados:", error);
+        // Mantém o prompt antigo ou usa o fallback em caso de erro
+        if (!currentSystemPrompt) {
+            currentSystemPrompt = AI_SYSTEM_INSTRUCTION;
+            console.error("A usar fallback do ficheiro de constantes devido a erro na DB.");
+        }
+    }
+}
+
+// Carrega o prompt quando o servidor inicia
+loadSystemPrompt();
+
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 // ... (Verificação da GEMINI_API_KEY) ...
 const ai = new GoogleGenerativeAI(GEMINI_API_KEY);
@@ -764,9 +792,9 @@ app.post('/api/ai-chat', uploadChatImage.single('image'), async (req, res) => {
         }
 
         // --- OTIMIZAÇÃO: Limita o histórico enviado para a IA ---
-        const MAX_HISTORY_TURNS = 15; // Mantém as últimas 10 trocas (10 perguntas + 10 respostas = 20 mensagens)
-        const truncatedHistory = formattedHistory.slice(-MAX_HISTORY_TURNS * 2);
-        console.log(`Enviando ${truncatedHistory.length} de ${formattedHistory.length} mensagens de histórico para a IA.`);
+        // const MAX_HISTORY_TURNS = 15; // Mantém as últimas 10 trocas (10 perguntas + 10 respostas = 20 mensagens)
+        // const truncatedHistory = formattedHistory.slice(-MAX_HISTORY_TURNS * 2);
+        // console.log(`Enviando ${truncatedHistory.length} de ${formattedHistory.length} mensagens de histórico para a IA.`);
         // --- FIM DA OTIMIZAÇÃO ---
 
         const contentParts = [];
@@ -804,7 +832,8 @@ app.post('/api/ai-chat', uploadChatImage.single('image'), async (req, res) => {
 
         const model = ai.getGenerativeModel({
             model: GEMINI_MODEL_NAME,
-            systemInstruction: { parts: [{ text: AI_SYSTEM_INSTRUCTION }] },
+            // USA A VARIÁVEL DO CACHE
+            systemInstruction: { parts: [{ text: currentSystemPrompt }] },
         });
 
         // --- MODIFICADO: Usa truncatedHistory ---
@@ -857,6 +886,68 @@ app.post('/api/ai-chat', uploadChatImage.single('image'), async (req, res) => {
     }
 });
 // --- Fim Rota Chat IA ---
+
+// GET para obter o prompt atual (Admin)
+app.get('/api/admin/system-prompt', isAuthenticated, isAdmin, async (req, res) => {
+    // Retorna o prompt do cache para rapidez, assume que está atualizado
+    // Ou pode ler da DB aqui se preferir garantir o valor mais recente:
+    try {
+         const result = await pool.query("SELECT setting_value FROM system_settings WHERE setting_key = 'ai_system_prompt'");
+         if (result.rows.length > 0) {
+             res.json({ prompt: result.rows[0].setting_value });
+         } else {
+             res.status(404).json({ message: "Prompt não encontrado na base de dados." });
+         }
+    } catch(error) {
+         console.error("Erro ao buscar prompt:", error);
+         res.status(500).json({ message: "Erro ao buscar prompt." });
+    }
+});
+
+// PUT para atualizar o prompt (Admin)
+app.put('/api/admin/system-prompt', isAuthenticated, isAdmin, async (req, res) => { // Já usa express.json() global
+    const { prompt } = req.body;
+    const userIp = req.ip;
+    const userAgent = req.headers['user-agent'];
+    const adminUserId = req.user.id;
+    const adminUsername = req.user.username;
+
+    if (typeof prompt !== 'string' || prompt.trim() === '') {
+        return res.status(400).json({ message: 'O conteúdo do prompt não pode estar vazio.' });
+    }
+
+    try {
+        // Atualiza na base de dados (ou insere se não existir)
+        const result = await pool.query(
+            `INSERT INTO system_settings (setting_key, setting_value)
+             VALUES ('ai_system_prompt', $1)
+             ON CONFLICT (setting_key) DO UPDATE SET
+               setting_value = EXCLUDED.setting_value,
+               updated_at = CURRENT_TIMESTAMP
+             RETURNING setting_value`,
+            [prompt]
+        );
+
+        // Atualiza o cache no servidor
+        currentSystemPrompt = result.rows[0].setting_value;
+        console.log("Prompt do sistema atualizado na base de dados e no cache.");
+
+        // Log da Ação
+        await logActivity(
+            'UPDATE_SYSTEM_PROMPT',
+            'ai_system_prompt',
+            { updatedBy: adminUsername, preview: prompt.substring(0, 100) + '...' },
+            userIp,
+            userAgent,
+            adminUserId
+        );
+
+        res.json({ message: 'Prompt do sistema atualizado com sucesso.', prompt: currentSystemPrompt });
+    } catch (error) {
+        console.error("Erro ao atualizar prompt:", error);
+        res.status(500).json({ message: 'Erro ao atualizar prompt do sistema.' });
+    }
+});
 
 // --- Rota de Limpeza de Arquivos Órfãos (PROTEGIDA com isAdmin e LOG ATUALIZADO) ---
 app.delete('/api/cleanup-orphaned-files', isAdmin, async (req, res) => {

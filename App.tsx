@@ -11,6 +11,8 @@ import { AuthProvider, useAuth } from './components/contexts/AuthContext'; // Im
 import LoginPage from './components/pages/LoginPage'; // Garanta que o caminho está correto (ex: ./pages/LoginPage)
 import AdminPage from './components/pages/AdminPage'; // Garanta que o caminho está correto (ex: ./pages/AdminPage)
 import LoadingSpinner from './components/LoadingSpinner'; // Garanta que o caminho está correto
+import AdminPromptPage from './components/pages/AdminPage';
+
 // --- Funções Auxiliares ---
 const extractImageUrlsFromHtml = (htmlText: string): string[] => {
   const imageUrls: string[] = [];
@@ -299,6 +301,11 @@ const AppContent: React.FC = () => {
             {/* --- Rotas Protegidas (Apenas Admin) --- */}
             <Route element={<ProtectedRoute allowedRoles={['admin']} />}>
               <Route path="/admin/users" element={<AdminPage />} />
+              <Route element={<ProtectedRoute allowedRoles={['admin']} />}>
+                <Route path="/admin/users" element={<AdminPage />} />
+                <Route path="/admin/prompt" element={<AdminPromptPage />} /> {/* <-- Rota adicionada */}
+                {/* Outras futuras rotas de admin aqui */}
+              </Route>
             </Route>
 
             {/* Rota não encontrada */}

@@ -2,7 +2,7 @@ import React from 'react';
 import { useNavigate, NavLink } from 'react-router-dom'; // Importa NavLink para estilo ativo
 import { useAuth } from './contexts/AuthContext'; // Importa o hook de autenticação
 // Certifique-se de que estes ícones foram adicionados ao seu components/Icons.tsx
-import { LightBulbIcon, SpeechBubbleIcon, PlusCircleIcon, UserGroupIcon, LoginIcon, LogoutIcon } from './Icons';
+import { LightBulbIcon, SpeechBubbleIcon, PlusCircleIcon, UserGroupIcon, LoginIcon, LogoutIcon, PencilIcon } from './Icons';
 
 const Header: React.FC = () => {
   const navigate = useNavigate();
@@ -60,10 +60,17 @@ const Header: React.FC = () => {
 
           {/* Link para Admin visível apenas para admins */}
           {user && user.role === 'admin' && (
-            <NavLink to="/admin/users" className={navLinkClasses} aria-label="Gerenciar Usuários">
-              <UserGroupIcon className="w-5 h-5 mr-1.5" /> {/* Ícone para gerenciar usuários */}
-              Admin
-            </NavLink>
+            <> {/* Usa Fragment <>...</> para agrupar múltiplos links */}
+              <NavLink to="/admin/users" className={navLinkClasses} aria-label="Gerenciar Usuários">
+                <UserGroupIcon className="w-5 h-5 mr-1.5" />
+                Admin
+              </NavLink>
+
+              <NavLink to="/admin/prompt" className={navLinkClasses} aria-label="Editar Prompt IA">
+                <PencilIcon className="w-5 h-5 mr-1.5" /> {/* Use PencilIcon ou outro ícone apropriado */}
+                Prompt IA
+              </NavLink>
+            </>
           )}
 
           {/* Botão Login ou Logout */}
