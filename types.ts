@@ -1,3 +1,9 @@
+export interface User {
+  id: string;
+  username: string;
+  role: 'admin' | 'editor';
+}
+
 export interface FAQAttachment {
   url: string;
   name: string;

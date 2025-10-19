@@ -11,7 +11,7 @@ const { v4: uuidv4 } = require('uuid'); // Para garantir IDs UUID válidos
 const connectionString = process.env.DATABASE_URL;
 // Caminho para o seu arquivo JSON original
 const DATA_BASE_DIR = process.env.NODE_ENV === 'production' ? '/app/data' : path.join(__dirname, '..', '..', 'data');
-const FAQS_JSON_PATH = path.join(DATA_BASE_DIR, 'faqs.json'); // Caminho corrigido
+const FAQS_JSON_PATH = '/app/data/faqs.json'; // Caminho corrigido
 
 // Verifica se a string de conexão existe
 if (!connectionString) {
