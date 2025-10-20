@@ -11,7 +11,7 @@ import { AuthProvider, useAuth } from './components/contexts/AuthContext'; // Im
 import LoginPage from './components/pages/LoginPage'; // Garanta que o caminho está correto (ex: ./pages/LoginPage)
 import AdminPage from './components/pages/AdminPage'; // Garanta que o caminho está correto (ex: ./pages/AdminPage)
 import LoadingSpinner from './components/LoadingSpinner'; // Garanta que o caminho está correto
-import AdminPromptPage from './components/pages/AdminPage';
+import AdminPromptPage from './components/pages/AdminPromptPage';
 
 // --- Funções Auxiliares ---
 const extractImageUrlsFromHtml = (htmlText: string): string[] => {
